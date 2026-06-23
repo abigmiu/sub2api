@@ -8,6 +8,8 @@ import (
 )
 
 const playgroundAPIKeyName = "playground"
+const PlaygroundResponsesModel = "gpt-5.5"
+const PlaygroundImagesModel = "gpt-image-2"
 
 var ErrPlaygroundOpenAIGroupUnavailable = infraerrors.Forbidden(
 	"PLAYGROUND_OPENAI_GROUP_UNAVAILABLE",
