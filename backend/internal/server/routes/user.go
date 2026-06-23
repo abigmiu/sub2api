@@ -122,5 +122,13 @@ func RegisterUserRoutes(
 			monitors.GET("", h.ChannelMonitor.List)
 			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 		}
+
+		playground := authenticated.Group("/playground/v1")
+		{
+			playground.POST("/responses", h.Playground.Responses)
+			playground.POST("/responses/*subpath", h.Playground.Responses)
+			playground.POST("/images/generations", h.Playground.Images)
+			playground.POST("/images/edits", h.Playground.Images)
+		}
 	}
 }

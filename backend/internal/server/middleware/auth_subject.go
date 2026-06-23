@@ -1,6 +1,9 @@
 package middleware
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
+)
 
 // AuthSubject is the minimal authenticated identity stored in gin context.
 // Decision: {UserID int64, Concurrency int}
@@ -25,4 +28,13 @@ func GetUserRoleFromContext(c *gin.Context) (string, bool) {
 	}
 	role, ok := value.(string)
 	return role, ok
+}
+
+func GetAuthenticatedUserFromContext(c *gin.Context) (*service.User, bool) {
+	value, exists := c.Get(string(ContextKeyAuthenticatedUser))
+	if !exists {
+		return nil, false
+	}
+	user, ok := value.(*service.User)
+	return user, ok
 }

@@ -73,6 +73,7 @@ type AuthService struct {
 	emailQueueService     *EmailQueueService
 	promoService          *PromoService
 	affiliateService      *AffiliateService
+	playgroundService     *PlaygroundService
 	defaultSubAssigner    DefaultSubscriptionAssigner
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 }
@@ -126,6 +127,13 @@ func (s *AuthService) EntClient() *dbent.Client {
 		return nil
 	}
 	return s.entClient
+}
+
+func (s *AuthService) SetPlaygroundService(playgroundService *PlaygroundService) {
+	if s == nil {
+		return
+	}
+	s.playgroundService = playgroundService
 }
 
 // Register 用户注册，返回token和用户
@@ -904,6 +912,12 @@ func (s *AuthService) postAuthUserBootstrap(ctx context.Context, user *User, sig
 
 	if touchLogin {
 		s.touchUserLogin(ctx, user.ID)
+	}
+
+	if s.playgroundService != nil {
+		if _, err := s.playgroundService.EnsureUserPlaygroundAPIKey(ctx, user.ID); err != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to ensure playground API key: user_id=%d err=%v", user.ID, err)
+		}
 	}
 }
 

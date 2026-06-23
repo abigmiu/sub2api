@@ -278,6 +278,24 @@ func GetSubscriptionFromContext(c *gin.Context) (*service.UserSubscription, bool
 	return subscription, ok
 }
 
+func ApplyGatewayAuthContext(c *gin.Context, apiKey *service.APIKey, user *service.User, subscription *service.UserSubscription) {
+	if c == nil || apiKey == nil || user == nil {
+		return
+	}
+	if subscription != nil {
+		c.Set(string(ContextKeySubscription), subscription)
+	}
+	c.Set(string(ContextKeyAPIKey), apiKey)
+	c.Set(string(ContextKeyUser), AuthSubject{
+		UserID:      user.ID,
+		Concurrency: user.Concurrency,
+	})
+	c.Set(string(ContextKeyAuthenticatedUser), user)
+	c.Set(string(ContextKeyUserRole), user.Role)
+	SetOpsFallbackAPIKey(c, apiKey)
+	setGroupContext(c, apiKey.Group)
+}
+
 func setGroupContext(c *gin.Context, group *service.Group) {
 	if !service.IsGroupContextValid(group) {
 		return

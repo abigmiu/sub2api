@@ -16,6 +16,8 @@ type ContextKey string
 const (
 	// ContextKeyUser 用户上下文键
 	ContextKeyUser ContextKey = "user"
+	// ContextKeyAuthenticatedUser JWT 鉴权后缓存的完整用户对象。
+	ContextKeyAuthenticatedUser ContextKey = "authenticated_user"
 	// ContextKeyUserRole 当前用户角色（string）
 	ContextKeyUserRole ContextKey = "user_role"
 	// ContextKeyAPIKey API密钥上下文键
