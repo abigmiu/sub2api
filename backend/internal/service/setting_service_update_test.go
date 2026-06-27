@@ -219,6 +219,45 @@ func TestSettingService_UpdateSettings_RegistrationEmailSuffixWhitelist_Normaliz
 	require.Equal(t, `["@example.com","@foo.bar","*.edu.cn"]`, repo.updates[SettingKeyRegistrationEmailSuffixWhitelist])
 }
 
+func TestSettingService_UpdateSettings_ImageSizeRouting_ValidGroups(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	groupReader := &defaultSubGroupReaderStub{
+		byID: map[int64]*Group{
+			101: {ID: 101, Status: StatusActive},
+			102: {ID: 102, Status: StatusActive},
+			103: {ID: 103, Status: StatusActive},
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+	svc.SetDefaultSubscriptionGroupReader(groupReader)
+
+	raw := `{"group_id_1k":101,"group_id_2k":102,"group_id_4k":103}`
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		ImageSizeRouting: raw,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []int64{101, 102, 103}, groupReader.calls)
+	require.JSONEq(t, raw, repo.updates[SettingKeyImageSizeRouting])
+}
+
+func TestSettingService_UpdateSettings_ImageSizeRouting_RejectsInactiveGroup(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	groupReader := &defaultSubGroupReaderStub{
+		byID: map[int64]*Group{
+			101: {ID: 101, Status: StatusInactive},
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+	svc.SetDefaultSubscriptionGroupReader(groupReader)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		ImageSizeRouting: `{"group_id_1k":101}`,
+	})
+	require.Error(t, err)
+	require.Equal(t, "IMAGE_SIZE_ROUTING_GROUP_INVALID", infraerrors.Reason(err))
+	require.Nil(t, repo.updates)
+}
+
 func TestSettingService_UpdateSettings_RegistrationEmailSuffixWhitelist_Invalid(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	svc := NewSettingService(repo, &config.Config{})

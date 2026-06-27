@@ -225,6 +225,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		TablePageSizeOptions:                   settings.TablePageSizeOptions,
 		CustomMenuItems:                        dto.ParseCustomMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
+		ImageSizeRouting:                       imageSizeRoutingSettingsToDTO(settings.ImageSizeRouting),
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
 		RiskControlEnabled:                     settings.RiskControlEnabled,
@@ -512,6 +513,7 @@ type UpdateSettingsRequest struct {
 	TablePageSizeOptions        []int                 `json:"table_page_size_options"`
 	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
+	ImageSizeRouting            *dto.ImageSizeRoutingSettings `json:"image_size_routing"`
 
 	// 默认配置
 	DefaultConcurrency                        int                               `json:"default_concurrency"`
@@ -1596,6 +1598,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TablePageSizeOptions:                   req.TablePageSizeOptions,
 		CustomMenuItems:                        customMenuJSON,
 		CustomEndpoints:                        customEndpointsJSON,
+		ImageSizeRouting: func() string {
+			if req.ImageSizeRouting == nil {
+				return previousSettings.ImageSizeRouting
+			}
+			return imageSizeRoutingSettingsFromDTO(req.ImageSizeRouting)
+		}(),
 		DefaultConcurrency:                     req.DefaultConcurrency,
 		DefaultBalance:                         req.DefaultBalance,
 		AffiliateRebateRate:                    affiliateRebateRate,
@@ -2163,6 +2171,40 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		payload.DefaultPlatformQuotas = platformQuotas
 	}
 	response.Success(c, systemSettingsResponseData(payload, updatedAuthSourceDefaults))
+}
+
+func imageSizeRoutingSettingsToDTO(raw string) *dto.ImageSizeRoutingSettings {
+	settings := serviceImageSizeRoutingSettings(raw)
+	return &dto.ImageSizeRoutingSettings{
+		GroupID1K: settings.GroupID1K,
+		GroupID2K: settings.GroupID2K,
+		GroupID4K: settings.GroupID4K,
+	}
+}
+
+func imageSizeRoutingSettingsFromDTO(input *dto.ImageSizeRoutingSettings) string {
+	if input == nil {
+		return "{}"
+	}
+	payload := service.ImageSizeRoutingSettings{
+		GroupID1K: input.GroupID1K,
+		GroupID2K: input.GroupID2K,
+		GroupID4K: input.GroupID4K,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
+}
+
+func serviceImageSizeRoutingSettings(raw string) *service.ImageSizeRoutingSettings {
+	settings := &service.ImageSizeRoutingSettings{}
+	if strings.TrimSpace(raw) == "" {
+		return settings
+	}
+	_ = json.Unmarshal([]byte(raw), settings)
+	return settings
 }
 
 // hasPaymentFields returns true if any payment-related field was explicitly provided.

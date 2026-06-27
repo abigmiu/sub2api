@@ -446,6 +446,31 @@ func NewOpenAIGatewayService(
 	return svc
 }
 
+func (s *OpenAIGatewayService) ResolveImageRequestGroupID(ctx context.Context, sizeTier string) (int64, error) {
+	if s == nil || s.settingService == nil {
+		return 0, fmt.Errorf("image size routing settings service unavailable")
+	}
+	settings, err := s.settingService.GetImageSizeRoutingSettings(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var groupID *int64
+	switch strings.ToUpper(strings.TrimSpace(sizeTier)) {
+	case ImageBillingSize1K:
+		groupID = settings.GroupID1K
+	case ImageBillingSize2K:
+		groupID = settings.GroupID2K
+	case ImageBillingSize4K:
+		groupID = settings.GroupID4K
+	default:
+		return 0, fmt.Errorf("unsupported image size tier: %s", sizeTier)
+	}
+	if groupID == nil || *groupID <= 0 {
+		return 0, fmt.Errorf("image size routing group not configured for %s", sizeTier)
+	}
+	return *groupID, nil
+}
+
 // ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelService）
 func (s *OpenAIGatewayService) ResolveChannelMapping(ctx context.Context, groupID int64, model string) ChannelMappingResult {
 	if s.channelService == nil {

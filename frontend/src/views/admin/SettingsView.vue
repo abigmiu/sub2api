@@ -3665,6 +3665,132 @@
                   </div>
                 </div>
               </div>
+
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="mb-3">
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ localText("图片尺寸分流", "Image Size Routing") }}
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{
+                      localText(
+                        "图片请求会按 1K / 2K / 4K 固定路由到这里配置的分组。",
+                        "Image requests will be routed by 1K / 2K / 4K to the configured groups.",
+                      )
+                    }}
+                  </p>
+                </div>
+
+                <div class="grid grid-cols-1 gap-3">
+                  <div
+                    class="grid grid-cols-1 gap-3 rounded border border-gray-200 p-3 md:grid-cols-[120px_1fr] dark:border-dark-600"
+                  >
+                    <div class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                      1K
+                    </div>
+                    <Select
+                      v-model="form.image_size_routing.group_id_1k"
+                      :options="imageRoutingGroupOptions"
+                      :placeholder="localText('选择分组', 'Select group')"
+                    >
+                      <template #selected="{ option }">
+                        <GroupBadge
+                          v-if="option"
+                          :name="(option as unknown as ImageRoutingGroupOption).label"
+                          :platform="(option as unknown as ImageRoutingGroupOption).platform"
+                          :subscription-type="(option as unknown as ImageRoutingGroupOption).subscriptionType"
+                          :rate-multiplier="(option as unknown as ImageRoutingGroupOption).rate"
+                        />
+                        <span v-else class="text-gray-400">
+                          {{ localText("选择分组", "Select group") }}
+                        </span>
+                      </template>
+                      <template #option="{ option, selected }">
+                        <GroupOptionItem
+                          :name="(option as unknown as ImageRoutingGroupOption).label"
+                          :platform="(option as unknown as ImageRoutingGroupOption).platform"
+                          :subscription-type="(option as unknown as ImageRoutingGroupOption).subscriptionType"
+                          :rate-multiplier="(option as unknown as ImageRoutingGroupOption).rate"
+                          :description="(option as unknown as ImageRoutingGroupOption).description"
+                          :selected="selected"
+                        />
+                      </template>
+                    </Select>
+                  </div>
+
+                  <div
+                    class="grid grid-cols-1 gap-3 rounded border border-gray-200 p-3 md:grid-cols-[120px_1fr] dark:border-dark-600"
+                  >
+                    <div class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                      2K
+                    </div>
+                    <Select
+                      v-model="form.image_size_routing.group_id_2k"
+                      :options="imageRoutingGroupOptions"
+                      :placeholder="localText('选择分组', 'Select group')"
+                    >
+                      <template #selected="{ option }">
+                        <GroupBadge
+                          v-if="option"
+                          :name="(option as unknown as ImageRoutingGroupOption).label"
+                          :platform="(option as unknown as ImageRoutingGroupOption).platform"
+                          :subscription-type="(option as unknown as ImageRoutingGroupOption).subscriptionType"
+                          :rate-multiplier="(option as unknown as ImageRoutingGroupOption).rate"
+                        />
+                        <span v-else class="text-gray-400">
+                          {{ localText("选择分组", "Select group") }}
+                        </span>
+                      </template>
+                      <template #option="{ option, selected }">
+                        <GroupOptionItem
+                          :name="(option as unknown as ImageRoutingGroupOption).label"
+                          :platform="(option as unknown as ImageRoutingGroupOption).platform"
+                          :subscription-type="(option as unknown as ImageRoutingGroupOption).subscriptionType"
+                          :rate-multiplier="(option as unknown as ImageRoutingGroupOption).rate"
+                          :description="(option as unknown as ImageRoutingGroupOption).description"
+                          :selected="selected"
+                        />
+                      </template>
+                    </Select>
+                  </div>
+
+                  <div
+                    class="grid grid-cols-1 gap-3 rounded border border-gray-200 p-3 md:grid-cols-[120px_1fr] dark:border-dark-600"
+                  >
+                    <div class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                      4K
+                    </div>
+                    <Select
+                      v-model="form.image_size_routing.group_id_4k"
+                      :options="imageRoutingGroupOptions"
+                      :placeholder="localText('选择分组', 'Select group')"
+                    >
+                      <template #selected="{ option }">
+                        <GroupBadge
+                          v-if="option"
+                          :name="(option as unknown as ImageRoutingGroupOption).label"
+                          :platform="(option as unknown as ImageRoutingGroupOption).platform"
+                          :subscription-type="(option as unknown as ImageRoutingGroupOption).subscriptionType"
+                          :rate-multiplier="(option as unknown as ImageRoutingGroupOption).rate"
+                        />
+                        <span v-else class="text-gray-400">
+                          {{ localText("选择分组", "Select group") }}
+                        </span>
+                      </template>
+                      <template #option="{ option, selected }">
+                        <GroupOptionItem
+                          :name="(option as unknown as ImageRoutingGroupOption).label"
+                          :platform="(option as unknown as ImageRoutingGroupOption).platform"
+                          :subscription-type="(option as unknown as ImageRoutingGroupOption).subscriptionType"
+                          :rate-multiplier="(option as unknown as ImageRoutingGroupOption).rate"
+                          :description="(option as unknown as ImageRoutingGroupOption).description"
+                          :selected="selected"
+                        />
+                      </template>
+                    </Select>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -6990,6 +7116,7 @@ import type {
   SystemSettings,
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
+  ImageSizeRoutingSettings,
   DefaultPlatformQuotasMap,
   OpenAIFastPolicyRule,
   WeChatConnectMode,
@@ -7144,6 +7271,7 @@ const adminApiKeyMasked = ref("");
 const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
 const subscriptionGroups = ref<AdminGroup[]>([]);
+const imageRoutingGroups = ref<AdminGroup[]>([]);
 
 // Overload Cooldown (529) 状态
 const overloadCooldownLoading = ref(true);
@@ -7635,6 +7763,8 @@ interface DefaultSubscriptionGroupOption {
   [key: string]: unknown;
 }
 
+interface ImageRoutingGroupOption extends DefaultSubscriptionGroupOption {}
+
 type SettingsForm = Omit<
   SystemSettings,
   | "wechat_connect_open_enabled"
@@ -7659,6 +7789,7 @@ type SettingsForm = Omit<
   openai_advanced_scheduler_enabled: boolean;
   // 系统全局平台限额 map；form 内始终归一化为全 4 平台对象（模板非空绑定依赖此不变量）
   default_platform_quotas: DefaultPlatformQuotasMap;
+  image_size_routing: ImageSizeRoutingSettings;
 };
 
 const form = reactive<SettingsForm>({
@@ -7676,6 +7807,11 @@ const form = reactive<SettingsForm>({
   login_agreement_documents: defaultLoginAgreementDocuments(),
   default_balance: 0,
   default_platform_quotas: normalizePlatformQuotasMap() as DefaultPlatformQuotasMap,
+  image_size_routing: {
+    group_id_1k: undefined,
+    group_id_2k: undefined,
+    group_id_4k: undefined,
+  },
   affiliate_rebate_rate: 20,
   affiliate_rebate_freeze_hours: 0,
   affiliate_rebate_duration_days: 0,
@@ -8120,6 +8256,17 @@ const defaultSubscriptionGroupOptions = computed<
   })),
 );
 
+const imageRoutingGroupOptions = computed<ImageRoutingGroupOption[]>(() =>
+  imageRoutingGroups.value.map((group) => ({
+    value: group.id,
+    label: group.name,
+    description: group.description,
+    platform: group.platform,
+    subscriptionType: group.subscription_type,
+    rate: group.rate_multiplier,
+  })),
+);
+
 const registrationEmailSuffixWhitelistSeparatorKeys = new Set([
   " ",
   ",",
@@ -8503,6 +8650,11 @@ async function loadSettings() {
         : defaultLoginAgreementDocuments();
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
     form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
+    form.image_size_routing = {
+      group_id_1k: settings.image_size_routing?.group_id_1k,
+      group_id_2k: settings.image_size_routing?.group_id_2k,
+      group_id_4k: settings.image_size_routing?.group_id_4k,
+    };
     form.backend_mode_enabled = settings.backend_mode_enabled;
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
@@ -8617,8 +8769,10 @@ async function loadSubscriptionGroups() {
       (group) =>
         group.subscription_type === "subscription" && group.status === "active",
     );
+    imageRoutingGroups.value = groups.filter((group) => group.status === "active");
   } catch (_error: unknown) {
     subscriptionGroups.value = [];
+    imageRoutingGroups.value = [];
   }
 }
 
@@ -8864,6 +9018,11 @@ async function saveSettings() {
       table_page_size_options: form.table_page_size_options,
       custom_menu_items: form.custom_menu_items,
       custom_endpoints: form.custom_endpoints,
+      image_size_routing: {
+        group_id_1k: form.image_size_routing.group_id_1k || undefined,
+        group_id_2k: form.image_size_routing.group_id_2k || undefined,
+        group_id_4k: form.image_size_routing.group_id_4k || undefined,
+      },
       frontend_url: form.frontend_url,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,

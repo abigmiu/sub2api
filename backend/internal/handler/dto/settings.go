@@ -141,6 +141,7 @@ type SystemSettings struct {
 	TablePageSizeOptions        []int            `json:"table_page_size_options"`
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
+	ImageSizeRouting            *ImageSizeRoutingSettings `json:"image_size_routing"`
 
 	DefaultConcurrency           int                          `json:"default_concurrency"`
 	DefaultBalance               float64                      `json:"default_balance"`
@@ -263,6 +264,12 @@ type SystemSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+}
+
+type ImageSizeRoutingSettings struct {
+	GroupID1K *int64 `json:"group_id_1k"`
+	GroupID2K *int64 `json:"group_id_2k"`
+	GroupID4K *int64 `json:"group_id_4k"`
 }
 
 type DefaultSubscriptionSetting struct {

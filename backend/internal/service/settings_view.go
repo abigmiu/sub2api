@@ -141,6 +141,7 @@ type SystemSettings struct {
 	TablePageSizeOptions        []int
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
+	ImageSizeRouting            string // JSON object: {"1K":1,"2K":2,"4K":3}
 
 	DefaultConcurrency           int
 	DefaultBalance               float64
@@ -231,6 +232,12 @@ type SystemSettings struct {
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool
+}
+
+type ImageSizeRoutingSettings struct {
+	GroupID1K *int64 `json:"group_id_1k,omitempty"`
+	GroupID2K *int64 `json:"group_id_2k,omitempty"`
+	GroupID4K *int64 `json:"group_id_4k,omitempty"`
 }
 
 type DefaultSubscriptionSetting struct {
