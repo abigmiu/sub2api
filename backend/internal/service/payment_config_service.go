@@ -24,6 +24,7 @@ const (
 	SettingLoadBalanceStrategy = "LOAD_BALANCE_STRATEGY"
 	SettingBalancePayDisabled  = "BALANCE_PAYMENT_DISABLED"
 	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
+	SettingUserBalanceMax      = "USER_BALANCE_MAX_AMOUNT"
 	SettingRechargeFeeRate     = "RECHARGE_FEE_RATE"
 	SettingProductNamePrefix   = "PRODUCT_NAME_PREFIX"
 	SettingProductNameSuffix   = "PRODUCT_NAME_SUFFIX"
@@ -54,6 +55,7 @@ type PaymentConfig struct {
 	EnabledTypes              []string `json:"enabled_payment_types"`
 	BalanceDisabled           bool     `json:"balance_disabled"`
 	BalanceRechargeMultiplier float64  `json:"balance_recharge_multiplier"`
+	UserBalanceMaxAmount      float64  `json:"user_balance_max_amount"`
 	RechargeFeeRate           float64  `json:"recharge_fee_rate"`
 	LoadBalanceStrategy       string   `json:"load_balance_strategy"`
 	ProductNamePrefix         string   `json:"product_name_prefix"`
@@ -84,6 +86,7 @@ type UpdatePaymentConfigRequest struct {
 	EnabledTypes              []string `json:"enabled_payment_types"`
 	BalanceDisabled           *bool    `json:"balance_disabled"`
 	BalanceRechargeMultiplier *float64 `json:"balance_recharge_multiplier"`
+	UserBalanceMaxAmount      *float64 `json:"user_balance_max_amount"`
 	RechargeFeeRate           *float64 `json:"recharge_fee_rate"`
 	LoadBalanceStrategy       *string  `json:"load_balance_strategy"`
 	ProductNamePrefix         *string  `json:"product_name_prefix"`
@@ -204,7 +207,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 	keys := []string{
 		SettingPaymentEnabled, SettingMinRechargeAmount, SettingMaxRechargeAmount,
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
-		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
+		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingUserBalanceMax, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
 		SettingProductNamePrefix, SettingProductNameSuffix,
 		SettingHelpImageURL, SettingHelpText,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
@@ -233,6 +236,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		MaxPendingOrders:          pcParseInt(vals[SettingMaxPendingOrders], defaultMaxPendingOrders),
 		BalanceDisabled:           vals[SettingBalancePayDisabled] == "true",
 		BalanceRechargeMultiplier: normalizeBalanceRechargeMultiplier(pcParseFloat(vals[SettingBalanceRechargeMult], defaultBalanceRechargeMultiplier)),
+		UserBalanceMaxAmount:      pcParseFloat(vals[SettingUserBalanceMax], 0),
 		RechargeFeeRate:           pcParseFloat(vals[SettingRechargeFeeRate], 0),
 		LoadBalanceStrategy:       vals[SettingLoadBalanceStrategy],
 		ProductNamePrefix:         vals[SettingProductNamePrefix],
@@ -313,6 +317,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingMaxPendingOrders:                  formatPositiveInt(req.MaxPendingOrders),
 		SettingBalancePayDisabled:                formatBoolOrEmpty(req.BalanceDisabled),
 		SettingBalanceRechargeMult:               formatPositiveFloat(req.BalanceRechargeMultiplier),
+		SettingUserBalanceMax:                    formatPositiveFloat(req.UserBalanceMaxAmount),
 		SettingRechargeFeeRate:                   formatNonNegativeFloat(req.RechargeFeeRate),
 		SettingLoadBalanceStrategy:               derefStr(req.LoadBalanceStrategy),
 		SettingProductNamePrefix:                 derefStr(req.ProductNamePrefix),

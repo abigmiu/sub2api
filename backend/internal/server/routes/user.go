@@ -127,6 +127,9 @@ func RegisterUserRoutes(
 		{
 			playground.POST("/images/generations", h.Playground.Images)
 			playground.POST("/images/edits", h.Playground.Images)
+			playground.POST("/image-tasks", h.Playground.CreateImageTask)
+			playground.POST("/image-tasks/edits", h.Playground.CreateImageTask)
+			playground.GET("/image-tasks/:id", h.Playground.GetImageTask)
 		}
 	}
 }

@@ -58,6 +58,9 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		limitAmount = plan.Price
 	} else if req.OrderType == payment.OrderTypeBalance {
 		orderAmount = calculateCreditedBalance(req.Amount, cfg.BalanceRechargeMultiplier)
+		if err := validateUserBalanceMaxAfterRecharge(user, cfg, orderAmount); err != nil {
+			return nil, err
+		}
 	}
 	feeRate := cfg.RechargeFeeRate
 	methodCurrency := payment.DefaultPaymentCurrency
@@ -127,6 +130,22 @@ func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrder
 			WithMetadata(map[string]string{"min": fmt.Sprintf("%.2f", cfg.MinAmount), "max": fmt.Sprintf("%.2f", cfg.MaxAmount)})
 	}
 	return nil, nil
+}
+
+func validateUserBalanceMaxAfterRecharge(user *User, cfg *PaymentConfig, rechargeAmount float64) error {
+	if user == nil || cfg == nil || cfg.UserBalanceMaxAmount <= 0 || rechargeAmount <= 0 {
+		return nil
+	}
+	nextBalance := user.Balance + rechargeAmount
+	if nextBalance <= cfg.UserBalanceMaxAmount {
+		return nil
+	}
+	return infraerrors.BadRequest("BALANCE_MAX_LIMIT_EXCEEDED", "recharge would exceed user balance limit").
+		WithMetadata(map[string]string{
+			"current_balance": fmt.Sprintf("%.2f", user.Balance),
+			"recharge_amount": fmt.Sprintf("%.2f", rechargeAmount),
+			"max_balance":     fmt.Sprintf("%.2f", cfg.UserBalanceMaxAmount),
+		})
 }
 
 func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRequest) (*dbent.SubscriptionPlan, error) {

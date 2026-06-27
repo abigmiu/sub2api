@@ -2,11 +2,14 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -20,17 +23,20 @@ import (
 
 type PlaygroundHandler struct {
 	playgroundService *service.PlaygroundService
+	taskService       *service.PlaygroundImageTaskService
 	apiKeyService     *service.APIKeyService
 	openAIGateway     *OpenAIGatewayHandler
 }
 
 func NewPlaygroundHandler(
 	playgroundService *service.PlaygroundService,
+	taskService *service.PlaygroundImageTaskService,
 	apiKeyService *service.APIKeyService,
 	openAIGateway *OpenAIGatewayHandler,
 ) *PlaygroundHandler {
 	return &PlaygroundHandler{
 		playgroundService: playgroundService,
+		taskService:       taskService,
 		apiKeyService:     apiKeyService,
 		openAIGateway:     openAIGateway,
 	}
@@ -107,6 +113,96 @@ func (h *PlaygroundHandler) Images(c *gin.Context) {
 		_ = h.apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 	}
 	h.openAIGateway.Images(c)
+}
+
+func (h *PlaygroundHandler) CreateImageTask(c *gin.Context) {
+	user, ok := middleware2.GetAuthenticatedUserFromContext(c)
+	if !ok || user == nil {
+		h.writeOpenAIError(c, http.StatusUnauthorized, "authentication_error", "User not authenticated")
+		return
+	}
+	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	if err != nil {
+		h.writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
+		return
+	}
+	body, contentType, err := ensurePlaygroundImageRequestModel(body, c.GetHeader("Content-Type"), service.PlaygroundImagesModel)
+	if err != nil {
+		h.writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
+	requestPath := "/v1/images/generations"
+	if strings.HasSuffix(c.FullPath(), "/edits") {
+		requestPath = "/v1/images/edits"
+	}
+	task, err := h.taskService.CreateTask(c.Request.Context(), user.ID, requestPath, contentType, body)
+	if err != nil {
+		h.writeOpenAIErrorFromError(c, err)
+		return
+	}
+	h.ExecuteImageTask(task.ID, user)
+	c.JSON(http.StatusAccepted, gin.H{
+		"id":     task.ID,
+		"status": string(task.Status),
+	})
+}
+
+func (h *PlaygroundHandler) GetImageTask(c *gin.Context) {
+	user, ok := middleware2.GetAuthenticatedUserFromContext(c)
+	if !ok || user == nil {
+		h.writeOpenAIError(c, http.StatusUnauthorized, "authentication_error", "User not authenticated")
+		return
+	}
+	taskID := strings.TrimSpace(c.Param("id"))
+	if taskID == "" {
+		h.writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "task id is required")
+		return
+	}
+	task, err := h.taskService.GetTask(c.Request.Context(), user.ID, taskID)
+	if err != nil {
+		h.writeOpenAIErrorFromError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, task.ToView())
+}
+
+func (h *PlaygroundHandler) ExecuteImageTask(taskID string, user *service.User) {
+	go h.executeImageTask(taskID, user)
+}
+
+func (h *PlaygroundHandler) executeImageTask(taskID string, user *service.User) {
+	ctx := context.Background()
+	task, err := h.taskService.MarkTaskRunning(ctx, taskID)
+	if err != nil {
+		return
+	}
+	apiKey, _, subscription, err := h.playgroundService.ResolveUserPlaygroundContext(ctx, user, true)
+	if err != nil {
+		h.taskService.FailTask(ctx, taskID, err.Error())
+		return
+	}
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req, err := http.NewRequest(http.MethodPost, task.RequestPath, bytes.NewReader(task.RequestBody))
+	if err != nil {
+		h.taskService.FailTask(ctx, taskID, err.Error())
+		return
+	}
+	req.Header.Set("Content-Type", task.RequestContentType)
+	req.ContentLength = int64(len(task.RequestBody))
+	ginCtx.Request = req
+	middleware2.ApplyGatewayAuthContext(ginCtx, apiKey, user, subscription)
+
+	h.openAIGateway.Images(ginCtx)
+
+	if recorder.Code >= http.StatusBadRequest {
+		h.taskService.FailTask(ctx, taskID, extractPlaygroundTaskError(recorder.Body.Bytes(), recorder.Code))
+		return
+	}
+	if err := h.taskService.CompleteTask(ctx, taskID, recorder.Body.Bytes()); err != nil {
+		h.taskService.FailTask(ctx, taskID, err.Error())
+	}
 }
 
 func ensurePlaygroundJSONModel(body []byte, model string) ([]byte, error) {
@@ -221,4 +317,19 @@ func (h *PlaygroundHandler) writeOpenAIError(c *gin.Context, status int, errType
 			"message": message,
 		},
 	})
+}
+
+func extractPlaygroundTaskError(body []byte, statusCode int) string {
+	if len(body) == 0 {
+		return fmt.Sprintf("image task failed with status %d", statusCode)
+	}
+	message := strings.TrimSpace(gjson.GetBytes(body, "error.message").String())
+	if message != "" {
+		return message
+	}
+	message = strings.TrimSpace(gjson.GetBytes(body, "message").String())
+	if message != "" {
+		return message
+	}
+	return strings.TrimSpace(string(body))
 }

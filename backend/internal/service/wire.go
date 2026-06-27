@@ -600,6 +600,7 @@ var ProviderSet = wire.NewSet(
 	NewContentModerationService,
 	NewAffiliateService,
 	NewPlaygroundService,
+	NewPlaygroundImageTaskService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
 	ProvidePaymentOrderExpiryService,
