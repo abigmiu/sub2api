@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -21,13 +22,14 @@ func (r *playgroundImageTaskRepository) Create(ctx context.Context, task *servic
 	_, err := r.db.ExecContext(
 		ctx,
 		`INSERT INTO playground_image_tasks
-		(id, user_id, status, request_path, request_content_type, request_body, error_message, result_json, created_at, started_at, finished_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		(id, user_id, status, request_path, request_content_type, request_headers, request_body, error_message, result_json, created_at, started_at, finished_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
 		task.ID,
 		task.UserID,
 		string(task.Status),
 		task.RequestPath,
 		task.RequestContentType,
+		nullJSON(task.RequestHeaders),
 		task.RequestBody,
 		task.ErrorMessage,
 		nullBytes(task.ResultJSON),
@@ -39,10 +41,11 @@ func (r *playgroundImageTaskRepository) Create(ctx context.Context, task *servic
 }
 
 func (r *playgroundImageTaskRepository) GetByID(ctx context.Context, id string) (*service.PlaygroundImageTask, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, user_id, status, request_path, request_content_type, request_body, error_message, result_json, created_at, started_at, finished_at
+	row := r.db.QueryRowContext(ctx, `SELECT id, user_id, status, request_path, request_content_type, request_headers, request_body, error_message, result_json, created_at, started_at, finished_at
 		FROM playground_image_tasks WHERE id = $1`, id)
 
 	task := &service.PlaygroundImageTask{}
+	var requestHeaders []byte
 	var resultJSON []byte
 	var startedAt sql.NullTime
 	var finishedAt sql.NullTime
@@ -52,6 +55,7 @@ func (r *playgroundImageTaskRepository) GetByID(ctx context.Context, id string) 
 		&task.Status,
 		&task.RequestPath,
 		&task.RequestContentType,
+		&requestHeaders,
 		&task.RequestBody,
 		&task.ErrorMessage,
 		&resultJSON,
@@ -63,6 +67,12 @@ func (r *playgroundImageTaskRepository) GetByID(ctx context.Context, id string) 
 			return nil, service.ErrPlaygroundImageTaskNotFound
 		}
 		return nil, err
+	}
+	if len(requestHeaders) > 0 {
+		var headers map[string][]string
+		if err := json.Unmarshal(requestHeaders, &headers); err == nil {
+			task.RequestHeaders = headers
+		}
 	}
 	task.ResultJSON = resultJSON
 	if startedAt.Valid {
@@ -95,6 +105,17 @@ func nullBytes(value []byte) any {
 		return nil
 	}
 	return value
+}
+
+func nullJSON(value any) any {
+	if value == nil {
+		return nil
+	}
+	raw, err := json.Marshal(value)
+	if err != nil || len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	return raw
 }
 
 func nullTime(value *time.Time) any {

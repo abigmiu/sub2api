@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -28,6 +29,7 @@ type PlaygroundImageTask struct {
 	Status             PlaygroundImageTaskStatus
 	RequestPath        string
 	RequestContentType string
+	RequestHeaders     http.Header
 	RequestBody        []byte
 	ErrorMessage       string
 	ResultJSON         []byte
@@ -43,25 +45,42 @@ type PlaygroundImageTaskRepository interface {
 }
 
 type PlaygroundImageObjectStore interface {
-	Upload(ctx context.Context, key string, body io.Reader, contentType string) (sizeBytes int64, err error)
+	Upload(ctx context.Context, key string, body io.Reader, contentType string) (*PlaygroundImageUploadResult, error)
 }
 
 type PlaygroundImageObjectStoreFactory func(ctx context.Context, cfg *PlaygroundImageStorageConfig) (PlaygroundImageObjectStore, error)
 
+type PlaygroundImageUploadResult struct {
+	SizeBytes int64
+	URL       string
+}
+
 type PlaygroundImageStorageConfig struct {
-	Endpoint        string `json:"endpoint"`
-	Region          string `json:"region"`
-	Bucket          string `json:"bucket"`
-	AccessKeyID     string `json:"access_key_id"`
-	SecretAccessKey string `json:"secret_access_key,omitempty"` //nolint:revive
-	Prefix          string `json:"prefix"`
-	ForcePathStyle  bool   `json:"force_path_style"`
-	PublicBaseURL   string `json:"public_base_url"`
+	Provider            string `json:"provider"`
+	Endpoint            string `json:"endpoint"`
+	Region              string `json:"region"`
+	Bucket              string `json:"bucket"`
+	AccessKeyID         string `json:"access_key_id"`
+	SecretAccessKey     string `json:"secret_access_key,omitempty"` //nolint:revive
+	Prefix              string `json:"prefix"`
+	ForcePathStyle      bool   `json:"force_path_style"`
+	PublicBaseURL       string `json:"public_base_url"`
+	CloudFileHost       string `json:"cloudfile_host"`
+	CloudFileAppID      string `json:"cloudfile_app_id"`
+	CloudFileToken      string `json:"cloudfile_app_token,omitempty"`
+	CloudFileProviderID int64  `json:"cloudfile_provider_id"`
 }
 
 func (c *PlaygroundImageStorageConfig) IsConfigured() bool {
-	return c != nil &&
-		c.Bucket != "" &&
+	if c == nil {
+		return false
+	}
+	if c.Provider == "cloudfile" {
+		return c.CloudFileHost != "" &&
+			c.CloudFileAppID != "" &&
+			c.CloudFileToken != ""
+	}
+	return c.Bucket != "" &&
 		c.AccessKeyID != "" &&
 		c.SecretAccessKey != "" &&
 		c.PublicBaseURL != ""

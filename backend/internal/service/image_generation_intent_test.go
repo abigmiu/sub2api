@@ -81,7 +81,7 @@ func TestResolveOpenAIResponsesImageBillingConfigToolModelWins(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, "gpt-image-2", imageModel)
-	require.Equal(t, "2K", imageSize)
+	require.Equal(t, "1K", imageSize)
 }
 
 func TestResolveOpenAIResponsesImageBillingConfigFromBodyIgnoresUnrelatedLargeInput(t *testing.T) {
@@ -114,7 +114,7 @@ func TestResolveOpenAIResponsesImageBillingConfigSupportsOfficialAndCustomSizes(
 		{
 			name:     "custom valid 2k",
 			body:     []byte(`{"model":"gpt-5.5","tools":[{"type":"image_generation","model":"gpt-image-2","size":"1280x768"}]}`),
-			wantTier: "2K",
+			wantTier: "1K",
 		},
 		{
 			name:     "default image tool model supports flexible size",

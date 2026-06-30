@@ -33,13 +33,14 @@ func NewPlaygroundImageTaskService(
 	}
 }
 
-func (s *PlaygroundImageTaskService) CreateTask(ctx context.Context, userID int64, requestPath, contentType string, body []byte) (*PlaygroundImageTask, error) {
+func (s *PlaygroundImageTaskService) CreateTask(ctx context.Context, userID int64, requestPath, contentType string, headers http.Header, body []byte) (*PlaygroundImageTask, error) {
 	task := &PlaygroundImageTask{
 		ID:                 uuid.NewString(),
 		UserID:             userID,
 		Status:             PlaygroundImageTaskStatusPending,
 		RequestPath:        requestPath,
 		RequestContentType: contentType,
+		RequestHeaders:     ClonePlaygroundTaskHeaders(headers),
 		RequestBody:        append([]byte(nil), body...),
 		CreatedAt:          time.Now(),
 	}
@@ -129,11 +130,12 @@ func (s *PlaygroundImageTaskService) persistTaskResult(ctx context.Context, task
 		}
 		ext := imageExtensionFromContentType(contentType)
 		objectKey := path.Join(strings.Trim(storageCfg.Prefix, "/"), "playground-images", taskID, fmt.Sprintf("%02d.%s", index+1, ext))
-		if _, err := store.Upload(ctx, objectKey, reader, contentType); err != nil {
+		uploadResult, err := store.Upload(ctx, objectKey, reader, contentType)
+		if err != nil {
 			return nil, err
 		}
 		result.Data = append(result.Data, ImageResponseItem{
-			URL:           strings.TrimRight(storageCfg.PublicBaseURL, "/") + "/" + objectKey,
+			URL:           strings.TrimSpace(uploadResult.URL),
 			RevisedPrompt: item.RevisedPrompt,
 		})
 	}
@@ -194,4 +196,17 @@ func extractPlaygroundTaskError(body []byte, statusCode int) string {
 		return message
 	}
 	return strings.TrimSpace(string(body))
+}
+
+func ClonePlaygroundTaskHeaders(src http.Header) http.Header {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(http.Header, len(src))
+	for key, values := range src {
+		copied := make([]string, len(values))
+		copy(copied, values)
+		dst[key] = copied
+	}
+	return dst
 }

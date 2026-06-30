@@ -17,9 +17,15 @@ func TestClassifyImageBillingTier(t *testing.T) {
 		{name: "explicit 2k landscape", size: "2048x1152", wantTier: "2K", wantOK: true},
 		{name: "explicit 4k landscape", size: "3840x2160", wantTier: "4K", wantOK: true},
 		{name: "explicit 4k portrait", size: "2160x3840", wantTier: "4K", wantOK: true},
-		{name: "long edge 1k", size: "1024X768", wantTier: "1K", wantOK: true},
-		{name: "long edge 2k", size: "1280x768", wantTier: "2K", wantOK: true},
-		{name: "long edge 4k", size: "2560x1600", wantTier: "4K", wantOK: true},
+		{name: "1k 4 by 3 preset", size: "1024X768", wantTier: "1K", wantOK: true},
+		{name: "1k 16 by 9 preset", size: "1280x720", wantTier: "1K", wantOK: true},
+		{name: "1k 3 by 2 preset", size: "1536x1024", wantTier: "1K", wantOK: true},
+		{name: "1k 2 by 3 preset", size: "1024x1536", wantTier: "1K", wantOK: true},
+		{name: "1k custom ratio from frontend budget", size: "1280x768", wantTier: "1K", wantOK: true},
+		{name: "2k 16 by 9 preset", size: "2560x1440", wantTier: "2K", wantOK: true},
+		{name: "2k custom ratio from frontend budget", size: "2288x1824", wantTier: "2K", wantOK: true},
+		{name: "2k wide but within 2k budget", size: "2560x1600", wantTier: "2K", wantOK: true},
+		{name: "4k 21 by 9 preset", size: "3840x1600", wantTier: "4K", wantOK: true},
 		{name: "tier string 1k", size: "1k", wantTier: "1K", wantOK: true},
 		{name: "empty", size: "", wantOK: false},
 		{name: "auto", size: "auto", wantOK: false},
@@ -31,6 +37,38 @@ func TestClassifyImageBillingTier(t *testing.T) {
 			gotTier, gotOK := ClassifyImageBillingTier(tt.size)
 			require.Equal(t, tt.wantOK, gotOK)
 			require.Equal(t, tt.wantTier, gotTier)
+		})
+	}
+}
+
+func TestNormalizeImageSizeForBilling(t *testing.T) {
+	got, ok := normalizeImageSizeForBilling("1279x719")
+	require.True(t, ok)
+	require.Equal(t, "1280x720", got)
+
+	got, ok = normalizeImageSizeForBilling("200x200")
+	require.True(t, ok)
+	require.Equal(t, "816x816", got)
+}
+
+func TestCalculateImageSizeForTier(t *testing.T) {
+	tests := []struct {
+		name     string
+		tier     string
+		ratio    imageRatio
+		expected string
+	}{
+		{name: "1k preset 16 9", tier: ImageBillingSize1K, ratio: imageRatio{width: 16, height: 9}, expected: "1280x720"},
+		{name: "2k preset 16 9", tier: ImageBillingSize2K, ratio: imageRatio{width: 16, height: 9}, expected: "2560x1440"},
+		{name: "4k preset 16 9", tier: ImageBillingSize4K, ratio: imageRatio{width: 16, height: 9}, expected: "3840x2160"},
+		{name: "2k custom 5 4", tier: ImageBillingSize2K, ratio: imageRatio{width: 5, height: 4}, expected: "2288x1824"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := calculateImageSizeForTier(tt.tier, tt.ratio)
+			require.True(t, ok)
+			require.Equal(t, tt.expected, got)
 		})
 	}
 }
@@ -85,7 +123,7 @@ func TestResolveImageBillingSize(t *testing.T) {
 			wantBilling:   "4K",
 			wantOutput:    "1024x1024",
 			wantSource:    ImageSizeSourceOutput,
-			wantBreakdown: map[string]int{"1K": 1, "2K": 1, "4K": 1},
+			wantBreakdown: map[string]int{"1K": 2, "4K": 1},
 		},
 		{
 			name:        "unparseable output falls back to parseable input",

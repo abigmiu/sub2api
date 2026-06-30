@@ -135,7 +135,7 @@ func (h *PlaygroundHandler) CreateImageTask(c *gin.Context) {
 	if strings.HasSuffix(c.FullPath(), "/edits") {
 		requestPath = "/v1/images/edits"
 	}
-	task, err := h.taskService.CreateTask(c.Request.Context(), user.ID, requestPath, contentType, body)
+	task, err := h.taskService.CreateTask(c.Request.Context(), user.ID, requestPath, contentType, c.Request.Header, body)
 	if err != nil {
 		h.writeOpenAIErrorFromError(c, err)
 		return
@@ -189,18 +189,23 @@ func (h *PlaygroundHandler) executeImageTask(taskID string, user *service.User) 
 		h.taskService.FailTask(ctx, taskID, err.Error())
 		return
 	}
+	req.Header = service.ClonePlaygroundTaskHeaders(task.RequestHeaders)
+	if req.Header == nil {
+		req.Header = make(http.Header)
+	}
 	req.Header.Set("Content-Type", task.RequestContentType)
 	req.ContentLength = int64(len(task.RequestBody))
 	ginCtx.Request = req
 	middleware2.ApplyGatewayAuthContext(ginCtx, apiKey, user, subscription)
 
 	h.openAIGateway.Images(ginCtx)
+	responseBody := recorder.Body.Bytes()
 
 	if recorder.Code >= http.StatusBadRequest {
-		h.taskService.FailTask(ctx, taskID, extractPlaygroundTaskError(recorder.Body.Bytes(), recorder.Code))
+		h.taskService.FailTask(ctx, taskID, extractPlaygroundTaskError(responseBody, recorder.Code))
 		return
 	}
-	if err := h.taskService.CompleteTask(ctx, taskID, recorder.Body.Bytes()); err != nil {
+	if err := h.taskService.CompleteTask(ctx, taskID, responseBody); err != nil {
 		h.taskService.FailTask(ctx, taskID, err.Error())
 	}
 }
