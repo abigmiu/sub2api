@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"syscall"
 	"strings"
 	"time"
@@ -123,6 +124,39 @@ func (s *CloudFilePlaygroundImageStore) Upload(ctx context.Context, key string, 
 		SizeBytes: int64(len(data)),
 		URL:       finalURL,
 	}, nil
+}
+
+func (s *CloudFilePlaygroundImageStore) CreateUploadSession(ctx context.Context, key, contentType string, size int64) (*service.PlaygroundUploadSession, error) {
+	presignResp, err := s.presign(ctx, key, contentType, size)
+	if err != nil {
+		return nil, err
+	}
+	headers := make([]service.PlaygroundUploadHeader, 0, len(presignResp.Data.UploadTarget.Headers))
+	for _, header := range presignResp.Data.UploadTarget.Headers {
+		headers = append(headers, service.PlaygroundUploadHeader{
+			Name:  header.Name,
+			Value: header.Value,
+		})
+	}
+	return &service.PlaygroundUploadSession{
+		UploadID:    fmt.Sprintf("%d", presignResp.Data.UploadID),
+		ObjectKey:   key,
+		FileURL:     strings.TrimSpace(presignResp.Data.FileURL),
+		ContentType: contentType,
+		UploadTarget: service.PlaygroundUploadTarget{
+			Method:    strings.ToUpper(strings.TrimSpace(presignResp.Data.UploadTarget.Method)),
+			UploadURL: strings.TrimSpace(presignResp.Data.UploadTarget.UploadURL),
+			Headers:   headers,
+		},
+	}, nil
+}
+
+func (s *CloudFilePlaygroundImageStore) CompleteUploadSession(ctx context.Context, uploadID string) (string, error) {
+	id, err := strconv.ParseInt(strings.TrimSpace(uploadID), 10, 64)
+	if err != nil || id <= 0 {
+		return "", fmt.Errorf("invalid upload id")
+	}
+	return s.complete(ctx, id)
 }
 
 func (s *CloudFilePlaygroundImageStore) presign(ctx context.Context, key, contentType string, size int64) (*cloudFilePresignResponse, error) {

@@ -50,6 +50,32 @@ type PlaygroundImageObjectStore interface {
 
 type PlaygroundImageObjectStoreFactory func(ctx context.Context, cfg *PlaygroundImageStorageConfig) (PlaygroundImageObjectStore, error)
 
+type PlaygroundUploadTarget struct {
+	Method    string                      `json:"method"`
+	UploadURL string                      `json:"upload_url"`
+	Headers   []PlaygroundUploadHeader    `json:"headers,omitempty"`
+}
+
+type PlaygroundUploadHeader struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type PlaygroundUploadSession struct {
+	UploadID     string                 `json:"upload_id"`
+	ObjectKey    string                 `json:"object_key"`
+	FileURL      string                 `json:"file_url"`
+	ContentType  string                 `json:"content_type"`
+	UploadTarget PlaygroundUploadTarget `json:"upload_target"`
+}
+
+type PlaygroundUploadSigner interface {
+	CreateUploadSession(ctx context.Context, key, contentType string, size int64) (*PlaygroundUploadSession, error)
+	CompleteUploadSession(ctx context.Context, uploadID string) (string, error)
+}
+
+type PlaygroundUploadSignerFactory func(ctx context.Context, cfg *PlaygroundImageStorageConfig) (PlaygroundUploadSigner, error)
+
 type PlaygroundImageUploadResult struct {
 	SizeBytes int64
 	URL       string
@@ -57,14 +83,7 @@ type PlaygroundImageUploadResult struct {
 
 type PlaygroundImageStorageConfig struct {
 	Provider            string `json:"provider"`
-	Endpoint            string `json:"endpoint"`
-	Region              string `json:"region"`
-	Bucket              string `json:"bucket"`
-	AccessKeyID         string `json:"access_key_id"`
-	SecretAccessKey     string `json:"secret_access_key,omitempty"` //nolint:revive
 	Prefix              string `json:"prefix"`
-	ForcePathStyle      bool   `json:"force_path_style"`
-	PublicBaseURL       string `json:"public_base_url"`
 	CloudFileHost       string `json:"cloudfile_host"`
 	CloudFileAppID      string `json:"cloudfile_app_id"`
 	CloudFileToken      string `json:"cloudfile_app_token,omitempty"`
@@ -75,15 +94,10 @@ func (c *PlaygroundImageStorageConfig) IsConfigured() bool {
 	if c == nil {
 		return false
 	}
-	if c.Provider == "cloudfile" {
-		return c.CloudFileHost != "" &&
-			c.CloudFileAppID != "" &&
-			c.CloudFileToken != ""
-	}
-	return c.Bucket != "" &&
-		c.AccessKeyID != "" &&
-		c.SecretAccessKey != "" &&
-		c.PublicBaseURL != ""
+	return c.Provider == "cloudfile" &&
+		c.CloudFileHost != "" &&
+		c.CloudFileAppID != "" &&
+		c.CloudFileToken != ""
 }
 
 type PlaygroundImageTaskResult struct {

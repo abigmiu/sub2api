@@ -91,7 +91,7 @@ func TestPlaygroundImageTaskServiceCompleteTaskUsesStoreURL(t *testing.T) {
 	require.Len(t, result.Data, 1)
 	require.Equal(t, "https://cdn.example.com/final.png", result.Data[0].URL)
 	require.Equal(t, "done", result.Data[0].RevisedPrompt)
-	require.Equal(t, []string{"playground-images/task-1/01.png|image/png"}, store.keys)
+	require.Equal(t, []string{"playground-images/task-1-01.png|image/png"}, store.keys)
 }
 
 func TestPlaygroundImageTaskServiceCreateTaskClonesHeaders(t *testing.T) {

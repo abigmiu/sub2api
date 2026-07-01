@@ -23,6 +23,7 @@ const (
 // RateLimitOptions 限流可选配置
 type RateLimitOptions struct {
 	FailureMode RateLimitFailureMode
+	KeyFunc      func(*gin.Context) string
 }
 
 var rateLimitScript = redis.NewScript(`
@@ -88,8 +89,13 @@ func (r *RateLimiter) LimitWithOptions(key string, limit int, window time.Durati
 	}
 
 	return func(c *gin.Context) {
-		ip := c.ClientIP()
-		redisKey := r.prefix + key + ":" + ip
+		keySuffix := c.ClientIP()
+		if opts.KeyFunc != nil {
+			if customKey := opts.KeyFunc(c); customKey != "" {
+				keySuffix = customKey
+			}
+		}
+		redisKey := r.prefix + key + ":" + keySuffix
 
 		ctx := c.Request.Context()
 

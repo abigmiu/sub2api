@@ -19,17 +19,20 @@ type PlaygroundImageTaskService struct {
 	repo         PlaygroundImageTaskRepository
 	settingRepo  SettingRepository
 	storeFactory PlaygroundImageObjectStoreFactory
+	signerFactory PlaygroundUploadSignerFactory
 }
 
 func NewPlaygroundImageTaskService(
 	repo PlaygroundImageTaskRepository,
 	settingRepo SettingRepository,
 	storeFactory PlaygroundImageObjectStoreFactory,
+	signerFactory PlaygroundUploadSignerFactory,
 ) *PlaygroundImageTaskService {
 	return &PlaygroundImageTaskService{
 		repo:         repo,
 		settingRepo:  settingRepo,
 		storeFactory: storeFactory,
+		signerFactory: signerFactory,
 	}
 }
 
@@ -129,7 +132,7 @@ func (s *PlaygroundImageTaskService) persistTaskResult(ctx context.Context, task
 			return nil, err
 		}
 		ext := imageExtensionFromContentType(contentType)
-		objectKey := path.Join(strings.Trim(storageCfg.Prefix, "/"), "playground-images", taskID, fmt.Sprintf("%02d.%s", index+1, ext))
+		objectKey := path.Join(strings.Trim(storageCfg.Prefix, "/"), "playground-images", fmt.Sprintf("%s-%02d.%s", taskID, index+1, ext))
 		uploadResult, err := store.Upload(ctx, objectKey, reader, contentType)
 		if err != nil {
 			return nil, err
@@ -158,6 +161,30 @@ func (s *PlaygroundImageTaskService) loadStorageConfig(ctx context.Context) (*Pl
 		return nil, ErrPlaygroundImageStorageNotConfigured
 	}
 	return &cfg, nil
+}
+
+func (s *PlaygroundImageTaskService) CreateUploadSession(ctx context.Context, key, contentType string, size int64) (*PlaygroundUploadSession, error) {
+	storageCfg, err := s.loadStorageConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	signer, err := s.signerFactory(ctx, storageCfg)
+	if err != nil {
+		return nil, err
+	}
+	return signer.CreateUploadSession(ctx, key, contentType, size)
+}
+
+func (s *PlaygroundImageTaskService) CompleteUploadSession(ctx context.Context, uploadID string) (string, error) {
+	storageCfg, err := s.loadStorageConfig(ctx)
+	if err != nil {
+		return "", err
+	}
+	signer, err := s.signerFactory(ctx, storageCfg)
+	if err != nil {
+		return "", err
+	}
+	return signer.CompleteUploadSession(ctx, uploadID)
 }
 
 func decodeImageData(b64 string) (*bytes.Reader, string, error) {

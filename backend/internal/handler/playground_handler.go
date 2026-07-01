@@ -9,6 +9,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"path"
+	"strconv"
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -17,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"github.com/google/uuid"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,6 +29,16 @@ type PlaygroundHandler struct {
 	taskService       *service.PlaygroundImageTaskService
 	apiKeyService     *service.APIKeyService
 	openAIGateway     *OpenAIGatewayHandler
+}
+
+type playgroundUploadPresignRequest struct {
+	FileName    string `json:"file_name"`
+	ContentType string `json:"content_type"`
+	Size        int64  `json:"size"`
+}
+
+type playgroundUploadCompleteRequest struct {
+	UploadID string `json:"upload_id"`
 }
 
 func NewPlaygroundHandler(
@@ -164,6 +177,55 @@ func (h *PlaygroundHandler) GetImageTask(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, task.ToView())
+}
+
+func (h *PlaygroundHandler) CreateUploadSession(c *gin.Context) {
+	user, ok := middleware2.GetAuthenticatedUserFromContext(c)
+	if !ok || user == nil {
+		h.writeOpenAIError(c, http.StatusUnauthorized, "authentication_error", "User not authenticated")
+		return
+	}
+	var req playgroundUploadPresignRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid upload request")
+		return
+	}
+	contentType := strings.TrimSpace(req.ContentType)
+	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		h.writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "content_type must be an image")
+		return
+	}
+	if req.Size <= 0 {
+		h.writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "size must be greater than 0")
+		return
+	}
+	fileName := sanitizePlaygroundUploadFileName(req.FileName)
+	objectKey := path.Join("playground-inputs", strconv.FormatInt(user.ID, 10), sanitizePlaygroundUploadID(), fileName)
+	session, err := h.taskService.CreateUploadSession(c.Request.Context(), objectKey, contentType, req.Size)
+	if err != nil {
+		h.writeOpenAIErrorFromError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": session})
+}
+
+func (h *PlaygroundHandler) CompleteUploadSession(c *gin.Context) {
+	_, ok := middleware2.GetAuthenticatedUserFromContext(c)
+	if !ok {
+		h.writeOpenAIError(c, http.StatusUnauthorized, "authentication_error", "User not authenticated")
+		return
+	}
+	var req playgroundUploadCompleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid upload request")
+		return
+	}
+	finalURL, err := h.taskService.CompleteUploadSession(c.Request.Context(), strings.TrimSpace(req.UploadID))
+	if err != nil {
+		h.writeOpenAIErrorFromError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"url": finalURL}})
 }
 
 func (h *PlaygroundHandler) ExecuteImageTask(taskID string, user *service.User) {
@@ -337,4 +399,16 @@ func extractPlaygroundTaskError(body []byte, statusCode int) string {
 		return message
 	}
 	return strings.TrimSpace(string(body))
+}
+
+func sanitizePlaygroundUploadFileName(name string) string {
+	trimmed := strings.TrimSpace(path.Base(name))
+	if trimmed == "" || trimmed == "." || trimmed == "/" {
+		return "image.png"
+	}
+	return trimmed
+}
+
+func sanitizePlaygroundUploadID() string {
+	return uuid.NewString()
 }

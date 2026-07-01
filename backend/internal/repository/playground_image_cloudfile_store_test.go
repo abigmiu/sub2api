@@ -33,7 +33,7 @@ func TestCloudFilePlaygroundImageStoreUpload(t *testing.T) {
 			var payload map[string]any
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
 			require.Equal(t, "image/png", payload["mime"])
-			require.Equal(t, "playground-images/task-1/01.png", payload["originName"])
+			require.Equal(t, "playground-images/task-1-01.png", payload["originName"])
 			require.Equal(t, float64(4), payload["size"])
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"uploadId":12,"fileUrl":"https://cdn.example.com/tmp.png","uploadTarget":{"method":"PUT","uploadUrl":"` + server.URL + `/upload-target","headers":[{"name":"Content-Type","value":"image/png"}]}}}`))
@@ -66,7 +66,7 @@ func TestCloudFilePlaygroundImageStoreUpload(t *testing.T) {
 		CloudFileProviderID: 7,
 	})
 
-	result, err := store.Upload(context.Background(), "playground-images/task-1/01.png", bytes.NewReader([]byte{1, 2, 3, 4}), "image/png")
+	result, err := store.Upload(context.Background(), "playground-images/task-1-01.png", bytes.NewReader([]byte{1, 2, 3, 4}), "image/png")
 	require.NoError(t, err)
 	require.Equal(t, int64(4), result.SizeBytes)
 	require.Equal(t, "https://cdn.example.com/final.png", result.URL)

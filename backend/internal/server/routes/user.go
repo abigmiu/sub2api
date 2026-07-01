@@ -1,11 +1,16 @@
 package routes
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	internalmiddleware "github.com/Wei-Shaw/sub2api/internal/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 // RegisterUserRoutes 注册用户相关路由（需要认证）
@@ -14,7 +19,9 @@ func RegisterUserRoutes(
 	h *handler.Handlers,
 	jwtAuth middleware.JWTAuthMiddleware,
 	settingService *service.SettingService,
+	redisClient *redis.Client,
 ) {
+	rateLimiter := internalmiddleware.NewRateLimiter(redisClient)
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
 	authenticated.Use(middleware.BackendModeUserGuard(settingService))
@@ -125,6 +132,18 @@ func RegisterUserRoutes(
 
 		playground := authenticated.Group("/playground")
 		{
+			uploadKeyFunc := func(c *gin.Context) string {
+				user, ok := middleware.GetAuthenticatedUserFromContext(c)
+				if !ok || user == nil {
+					return ""
+				}
+				return fmt.Sprintf("user:%d", user.ID)
+			}
+			playground.POST("/uploads/presign", rateLimiter.LimitWithOptions("playground-upload-presign", 10, time.Minute, internalmiddleware.RateLimitOptions{
+				FailureMode: internalmiddleware.RateLimitFailClose,
+				KeyFunc:      uploadKeyFunc,
+			}), h.Playground.CreateUploadSession)
+			playground.POST("/uploads/complete", h.Playground.CompleteUploadSession)
 			playground.POST("/images/generations", h.Playground.Images)
 			playground.POST("/images/edits", h.Playground.Images)
 			playground.POST("/image-tasks", h.Playground.CreateImageTask)

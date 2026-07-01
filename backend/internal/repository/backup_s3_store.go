@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -104,6 +105,25 @@ func (s *S3BackupStore) PresignURL(ctx context.Context, key string, expiry time.
 		return "", fmt.Errorf("presign url: %w", err)
 	}
 	return result.URL, nil
+}
+
+func (s *S3BackupStore) PresignPutObject(ctx context.Context, key, contentType string, expiry time.Duration) (string, http.Header, error) {
+	presignClient := s3.NewPresignClient(s.client)
+	result, err := presignClient.PresignPutObject(ctx, &s3.PutObjectInput{
+		Bucket:      &s.bucket,
+		Key:         &key,
+		ContentType: &contentType,
+	}, s3.WithPresignExpires(expiry))
+	if err != nil {
+		return "", nil, fmt.Errorf("presign put object: %w", err)
+	}
+	headers := make(http.Header, len(result.SignedHeader))
+	for key, values := range result.SignedHeader {
+		copied := make([]string, len(values))
+		copy(copied, values)
+		headers[key] = copied
+	}
+	return result.URL, headers, nil
 }
 
 func (s *S3BackupStore) HeadBucket(ctx context.Context) error {

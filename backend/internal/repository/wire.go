@@ -133,6 +133,7 @@ var ProviderSet = wire.NewSet(
 	NewPgDumper,
 	NewS3BackupStoreFactory,
 	NewPlaygroundImageObjectStoreFactory,
+	NewPlaygroundUploadSignerFactory,
 
 	// HTTP service ports (DI Strategy A: return interface directly)
 	NewTurnstileVerifier,
