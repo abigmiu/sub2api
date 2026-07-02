@@ -176,6 +176,9 @@ func (h *PlaygroundHandler) GetImageTask(c *gin.Context) {
 		h.writeOpenAIErrorFromError(c, err)
 		return
 	}
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
 	c.JSON(http.StatusOK, task.ToView())
 }
 
