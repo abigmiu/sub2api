@@ -3582,6 +3582,39 @@ func (s *SettingService) GetImageSizeRoutingSettings(ctx context.Context) (*Imag
 	return parseImageSizeRoutingSettings(settings.ImageSizeRouting), nil
 }
 
+func (s *SettingService) GetImageSizeRoutingGroup(ctx context.Context, sizeTier string) (*Group, error) {
+	if s == nil || s.defaultSubGroupReader == nil {
+		return nil, fmt.Errorf("image size routing group reader unavailable")
+	}
+	settings, err := s.GetImageSizeRoutingSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var groupID *int64
+	normalizedTier := strings.ToUpper(strings.TrimSpace(sizeTier))
+	switch normalizedTier {
+	case ImageBillingSize1K:
+		groupID = settings.GroupID1K
+	case ImageBillingSize2K:
+		groupID = settings.GroupID2K
+	case ImageBillingSize4K:
+		groupID = settings.GroupID4K
+	default:
+		return nil, fmt.Errorf("unsupported image size tier: %s", sizeTier)
+	}
+	if groupID == nil || *groupID <= 0 {
+		return nil, fmt.Errorf("image size routing group not configured for %s", normalizedTier)
+	}
+	group, err := s.defaultSubGroupReader.GetByID(ctx, *groupID)
+	if err != nil {
+		return nil, err
+	}
+	if group == nil || !group.IsActive() {
+		return nil, fmt.Errorf("image size routing group not configured for %s", normalizedTier)
+	}
+	return group, nil
+}
+
 func normalizeOptionalPositiveInt64(value *int64) *int64 {
 	if value == nil || *value <= 0 {
 		return nil

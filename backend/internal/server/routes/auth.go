@@ -217,6 +217,11 @@ func RegisterAuthRoutes(
 		settings.GET("/email-unsubscribe", h.Setting.UnsubscribeNotificationEmail)
 	}
 
+	playground := v1.Group("/playground")
+	{
+		playground.GET("/pricing", h.Setting.GetPlaygroundPricing)
+	}
+
 	// 需要认证的当前用户信息
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))

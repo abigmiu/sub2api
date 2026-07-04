@@ -12,6 +12,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type playgroundPricingItem struct {
+	GroupID   *int64   `json:"group_id,omitempty"`
+	GroupName string   `json:"group_name,omitempty"`
+	Price     *float64 `json:"price,omitempty"`
+}
+
 // SettingHandler 公开设置处理器（无需认证）
 type SettingHandler struct {
 	settingService           *service.SettingService
@@ -101,6 +107,22 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
 	})
+}
+
+func (h *SettingHandler) GetPlaygroundPricing(c *gin.Context) {
+	items := map[string]playgroundPricingItem{}
+	for _, tier := range []string{service.ImageBillingSize1K, service.ImageBillingSize2K, service.ImageBillingSize4K} {
+		item := playgroundPricingItem{}
+		group, err := h.settingService.GetImageSizeRoutingGroup(c.Request.Context(), tier)
+		if err == nil && group != nil {
+			groupID := group.ID
+			item.GroupID = &groupID
+			item.GroupName = strings.TrimSpace(group.Name)
+			item.Price = group.GetImagePrice(tier)
+		}
+		items[tier] = item
+	}
+	response.Success(c, items)
 }
 
 // UnsubscribeNotificationEmail handles optional notification email opt-outs.
