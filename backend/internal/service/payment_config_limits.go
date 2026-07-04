@@ -38,6 +38,37 @@ func (s *PaymentConfigService) GetAvailableMethodLimits(ctx context.Context) (*M
 	return resp, nil
 }
 
+func ApplyPaymentConfigRange(limits *MethodLimitsResponse, cfg *PaymentConfig) *MethodLimitsResponse {
+	resp := &MethodLimitsResponse{Methods: map[string]MethodLimits{}}
+	if limits == nil {
+		return resp
+	}
+	for method, ml := range limits.Methods {
+		adjusted, ok := pcApplyPaymentConfigRangeToMethod(ml, cfg)
+		if ok {
+			resp.Methods[method] = adjusted
+		}
+	}
+	resp.GlobalMin, resp.GlobalMax = pcComputeGlobalRange(resp.Methods)
+	return resp
+}
+
+func pcApplyPaymentConfigRangeToMethod(ml MethodLimits, cfg *PaymentConfig) (MethodLimits, bool) {
+	if cfg == nil {
+		return ml, true
+	}
+	if cfg.MinAmount > 0 && (ml.SingleMin == 0 || cfg.MinAmount > ml.SingleMin) {
+		ml.SingleMin = cfg.MinAmount
+	}
+	if cfg.MaxAmount > 0 && (ml.SingleMax == 0 || cfg.MaxAmount < ml.SingleMax) {
+		ml.SingleMax = cfg.MaxAmount
+	}
+	if ml.SingleMin > 0 && ml.SingleMax > 0 && ml.SingleMin > ml.SingleMax {
+		return MethodLimits{}, false
+	}
+	return ml, true
+}
+
 func (s *PaymentConfigService) pcApplyEnabledVisibleMethodInstances(ctx context.Context, typeInstances map[string][]*dbent.PaymentProviderInstance, instances []*dbent.PaymentProviderInstance) map[string][]*dbent.PaymentProviderInstance {
 	if len(typeInstances) == 0 {
 		return typeInstances

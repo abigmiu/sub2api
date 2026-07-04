@@ -111,6 +111,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	limitsResp = service.ApplyPaymentConfigRange(limitsResp, cfg)
 
 	// Fetch plans with group info
 	plans, _ := h.configService.ListPlansForSale(ctx)

@@ -313,6 +313,69 @@ func TestPcComputeGlobalRange(t *testing.T) {
 	})
 }
 
+func TestApplyPaymentConfigRange(t *testing.T) {
+	t.Parallel()
+
+	t.Run("config constrains unlimited provider limits", func(t *testing.T) {
+		t.Parallel()
+		resp := ApplyPaymentConfigRange(&MethodLimitsResponse{
+			Methods: map[string]MethodLimits{
+				"stripe": {PaymentType: "stripe", SingleMin: 0, SingleMax: 0},
+			},
+		}, &PaymentConfig{MinAmount: 5, MaxAmount: 100})
+
+		limits := resp.Methods["stripe"]
+		if limits.SingleMin != 5 || limits.SingleMax != 100 {
+			t.Fatalf("stripe limits = (%v, %v), want (5, 100)", limits.SingleMin, limits.SingleMax)
+		}
+		if resp.GlobalMin != 5 || resp.GlobalMax != 100 {
+			t.Fatalf("global range = (%v, %v), want (5, 100)", resp.GlobalMin, resp.GlobalMax)
+		}
+	})
+
+	t.Run("config intersects wider method limits", func(t *testing.T) {
+		t.Parallel()
+		resp := ApplyPaymentConfigRange(&MethodLimitsResponse{
+			Methods: map[string]MethodLimits{
+				"alipay": {PaymentType: "alipay", SingleMin: 2, SingleMax: 200},
+				"wxpay":  {PaymentType: "wxpay", SingleMin: 20, SingleMax: 0},
+			},
+		}, &PaymentConfig{MinAmount: 5, MaxAmount: 100})
+
+		alipay := resp.Methods["alipay"]
+		if alipay.SingleMin != 5 || alipay.SingleMax != 100 {
+			t.Fatalf("alipay limits = (%v, %v), want (5, 100)", alipay.SingleMin, alipay.SingleMax)
+		}
+		wxpay := resp.Methods["wxpay"]
+		if wxpay.SingleMin != 20 || wxpay.SingleMax != 100 {
+			t.Fatalf("wxpay limits = (%v, %v), want (20, 100)", wxpay.SingleMin, wxpay.SingleMax)
+		}
+		if resp.GlobalMin != 5 || resp.GlobalMax != 100 {
+			t.Fatalf("global range = (%v, %v), want (5, 100)", resp.GlobalMin, resp.GlobalMax)
+		}
+	})
+
+	t.Run("impossible method range is omitted", func(t *testing.T) {
+		t.Parallel()
+		resp := ApplyPaymentConfigRange(&MethodLimitsResponse{
+			Methods: map[string]MethodLimits{
+				"alipay": {PaymentType: "alipay", SingleMin: 1, SingleMax: 4},
+				"wxpay":  {PaymentType: "wxpay", SingleMin: 5, SingleMax: 20},
+			},
+		}, &PaymentConfig{MinAmount: 5, MaxAmount: 100})
+
+		if _, ok := resp.Methods["alipay"]; ok {
+			t.Fatal("expected alipay to be omitted")
+		}
+		if _, ok := resp.Methods["wxpay"]; !ok {
+			t.Fatal("expected wxpay to remain")
+		}
+		if resp.GlobalMin != 5 || resp.GlobalMax != 20 {
+			t.Fatalf("global range = (%v, %v), want (5, 20)", resp.GlobalMin, resp.GlobalMax)
+		}
+	})
+}
+
 func TestPcInstanceTypeLimits(t *testing.T) {
 	t.Parallel()
 
