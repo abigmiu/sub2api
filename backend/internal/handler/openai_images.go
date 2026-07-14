@@ -108,7 +108,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
 	requestCtx := service.WithOpenAIImageGenerationIntent(c.Request.Context())
-	resolvedGroupID, err := h.gatewayService.ResolveImageRequestGroupID(c.Request.Context(), parsed.SizeTier)
+	resolvedGroupID, err := h.gatewayService.ResolveImageRequestGroupID(c.Request.Context(), parsed.RoutingTier)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
@@ -318,6 +318,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			}
 		}
 		if result != nil {
+			result.ImageRoutingTier = parsed.RoutingTier
 			if account.Type == service.AccountTypeOAuth {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
 			}

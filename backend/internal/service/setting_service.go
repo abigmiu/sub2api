@@ -3571,6 +3571,7 @@ func parseImageSizeRoutingSettings(raw string) *ImageSizeRoutingSettings {
 	payload.GroupID1K = normalizeOptionalPositiveInt64(payload.GroupID1K)
 	payload.GroupID2K = normalizeOptionalPositiveInt64(payload.GroupID2K)
 	payload.GroupID4K = normalizeOptionalPositiveInt64(payload.GroupID4K)
+	payload.GroupIDUnstable = normalizeOptionalPositiveInt64(payload.GroupIDUnstable)
 	return &payload
 }
 
@@ -3599,6 +3600,8 @@ func (s *SettingService) GetImageSizeRoutingGroup(ctx context.Context, sizeTier 
 		groupID = settings.GroupID2K
 	case ImageBillingSize4K:
 		groupID = settings.GroupID4K
+	case ImageSizeRoutingUnstable:
+		groupID = settings.GroupIDUnstable
 	default:
 		return nil, fmt.Errorf("unsupported image size tier: %s", sizeTier)
 	}
@@ -3634,6 +3637,7 @@ func (s *SettingService) validateImageSizeRoutingGroups(ctx context.Context, set
 		{size: ImageBillingSize1K, groupID: settings.GroupID1K},
 		{size: ImageBillingSize2K, groupID: settings.GroupID2K},
 		{size: ImageBillingSize4K, groupID: settings.GroupID4K},
+		{size: ImageSizeRoutingUnstable, groupID: settings.GroupIDUnstable},
 	} {
 		if item.groupID == nil || *item.groupID <= 0 {
 			continue

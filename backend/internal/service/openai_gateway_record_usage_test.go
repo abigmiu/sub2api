@@ -22,6 +22,17 @@ type openAIRecordUsageLogRepoStub struct {
 	lastCtxErr error
 }
 
+type openAIRecordUsageGroupReaderStub struct {
+	group *Group
+}
+
+func (s *openAIRecordUsageGroupReaderStub) GetByID(_ context.Context, id int64) (*Group, error) {
+	if s.group != nil && s.group.ID == id {
+		return s.group, nil
+	}
+	return nil, ErrGroupNotFound
+}
+
 func (s *openAIRecordUsageLogRepoStub) Create(ctx context.Context, log *UsageLog) (bool, error) {
 	s.calls++
 	s.lastLog = log
@@ -1506,6 +1517,55 @@ func TestOpenAIGatewayServiceRecordUsage_OutputImageSizeWinsBeforeBillingAndPers
 	require.Equal(t, map[string]int{ImageBillingSize4K: 1}, usageRepo.lastLog.ImageSizeBreakdown)
 	require.InDelta(t, 0.44, usageRepo.lastLog.TotalCost, 1e-12)
 	require.InDelta(t, 0.44, usageRepo.lastLog.ActualCost, 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_UnstableRoutingUsesActualOutputTierPrice(t *testing.T) {
+	imagePrice1K := 0.17
+	unstableGroupID := int64(1203)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+	settingService := NewSettingService(&imageSizeRoutingRepoStub{
+		values: map[string]string{
+			SettingKeyImageSizeRouting: `{"group_id_unstable":1203}`,
+		},
+	}, &config.Config{})
+	settingService.SetDefaultSubscriptionGroupReader(&openAIRecordUsageGroupReaderStub{
+		group: &Group{
+			ID:             unstableGroupID,
+			Status:         StatusActive,
+			RateMultiplier: 1.0,
+			ImagePrice1K:   &imagePrice1K,
+		},
+	})
+	svc.settingService = settingService
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:        "resp_image_unstable_size",
+			Model:            "gpt-image-2",
+			ImageCount:       1,
+			ImageRoutingTier: ImageSizeRoutingUnstable,
+			ImageInputSize:   "auto",
+			ImageOutputSizes: []string{"1024x1024"},
+			Duration:         time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      11203,
+			GroupID: i64p(1200),
+			Group: &Group{
+				ID:             1200,
+				RateMultiplier: 1.0,
+			},
+		},
+		User:    &User{ID: 21203},
+		Account: &Account{ID: 31203},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.ImageSize)
+	require.Equal(t, ImageBillingSize1K, *usageRepo.lastLog.ImageSize)
+	require.InDelta(t, imagePrice1K, usageRepo.lastLog.TotalCost, 1e-12)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_ImageUsesPerImageBillingEvenWithUsageTokens(t *testing.T) {

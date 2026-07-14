@@ -20,6 +20,7 @@ export interface ImageSizeRoutingSettings {
   group_id_1k?: number;
   group_id_2k?: number;
   group_id_4k?: number;
+  group_id_unstable?: number;
 }
 
 // ── 平台限额类型 ──────────────────────────────────────────────────

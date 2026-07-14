@@ -3674,8 +3674,8 @@
                   <p class="text-sm text-gray-500 dark:text-gray-400">
                     {{
                       localText(
-                        "图片请求会按 1K / 2K / 4K 固定路由到这里配置的分组。",
-                        "Image requests will be routed by 1K / 2K / 4K to the configured groups.",
+                        "图片请求会按 1K / 2K / 4K / 不固定尺寸路由到这里配置的分组。",
+                        "Image requests will be routed by 1K / 2K / 4K / unstable size to the configured groups.",
                       )
                     }}
                   </p>
@@ -3762,6 +3762,42 @@
                     </div>
                     <Select
                       v-model="form.image_size_routing.group_id_4k"
+                      :options="imageRoutingGroupOptions"
+                      :placeholder="localText('选择分组', 'Select group')"
+                    >
+                      <template #selected="{ option }">
+                        <GroupBadge
+                          v-if="option"
+                          :name="(option as unknown as ImageRoutingGroupOption).label"
+                          :platform="(option as unknown as ImageRoutingGroupOption).platform"
+                          :subscription-type="(option as unknown as ImageRoutingGroupOption).subscriptionType"
+                          :rate-multiplier="(option as unknown as ImageRoutingGroupOption).rate"
+                        />
+                        <span v-else class="text-gray-400">
+                          {{ localText("选择分组", "Select group") }}
+                        </span>
+                      </template>
+                      <template #option="{ option, selected }">
+                        <GroupOptionItem
+                          :name="(option as unknown as ImageRoutingGroupOption).label"
+                          :platform="(option as unknown as ImageRoutingGroupOption).platform"
+                          :subscription-type="(option as unknown as ImageRoutingGroupOption).subscriptionType"
+                          :rate-multiplier="(option as unknown as ImageRoutingGroupOption).rate"
+                          :description="(option as unknown as ImageRoutingGroupOption).description"
+                          :selected="selected"
+                        />
+                      </template>
+                    </Select>
+                  </div>
+
+                  <div
+                    class="grid grid-cols-1 gap-3 rounded border border-gray-200 p-3 md:grid-cols-[120px_1fr] dark:border-dark-600"
+                  >
+                    <div class="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ localText("1K / 2K 不固定", "1K / 2K Unstable") }}
+                    </div>
+                    <Select
+                      v-model="form.image_size_routing.group_id_unstable"
                       :options="imageRoutingGroupOptions"
                       :placeholder="localText('选择分组', 'Select group')"
                     >
@@ -7811,6 +7847,7 @@ const form = reactive<SettingsForm>({
     group_id_1k: undefined,
     group_id_2k: undefined,
     group_id_4k: undefined,
+    group_id_unstable: undefined,
   },
   affiliate_rebate_rate: 20,
   affiliate_rebate_freeze_hours: 0,
@@ -8654,6 +8691,7 @@ async function loadSettings() {
       group_id_1k: settings.image_size_routing?.group_id_1k,
       group_id_2k: settings.image_size_routing?.group_id_2k,
       group_id_4k: settings.image_size_routing?.group_id_4k,
+      group_id_unstable: settings.image_size_routing?.group_id_unstable,
     };
     form.backend_mode_enabled = settings.backend_mode_enabled;
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
@@ -9022,6 +9060,7 @@ async function saveSettings() {
         group_id_1k: form.image_size_routing.group_id_1k || undefined,
         group_id_2k: form.image_size_routing.group_id_2k || undefined,
         group_id_4k: form.image_size_routing.group_id_4k || undefined,
+        group_id_unstable: form.image_size_routing.group_id_unstable || undefined,
       },
       frontend_url: form.frontend_url,
       smtp_host: form.smtp_host,

@@ -57,7 +57,7 @@ func TestResolveImageRequestGroupID_UsesGlobalImageSizeRouting(t *testing.T) {
 	svc := &OpenAIGatewayService{
 		settingService: NewSettingService(&imageSizeRoutingRepoStub{
 			values: map[string]string{
-				SettingKeyImageSizeRouting: `{"group_id_1k":11,"group_id_2k":22,"group_id_4k":44}`,
+				SettingKeyImageSizeRouting: `{"group_id_1k":11,"group_id_2k":22,"group_id_4k":44,"group_id_unstable":55}`,
 			},
 		}, &config.Config{}),
 	}
@@ -73,6 +73,10 @@ func TestResolveImageRequestGroupID_UsesGlobalImageSizeRouting(t *testing.T) {
 	groupID, err = svc.ResolveImageRequestGroupID(context.Background(), ImageBillingSize4K)
 	require.NoError(t, err)
 	require.Equal(t, int64(44), groupID)
+
+	groupID, err = svc.ResolveImageRequestGroupID(context.Background(), ImageSizeRoutingUnstable)
+	require.NoError(t, err)
+	require.Equal(t, int64(55), groupID)
 }
 
 func TestResolveImageRequestGroupID_RequiresConfiguredTier(t *testing.T) {

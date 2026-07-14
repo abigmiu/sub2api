@@ -247,6 +247,7 @@ type OpenAIForwardResult struct {
 	ClientDisconnect   bool
 	ImageCount         int
 	ImageSize          string
+	ImageRoutingTier   string
 	ImageInputSize     string
 	ImageOutputSize    string
 	ImageOutputSizes   []string
@@ -462,6 +463,8 @@ func (s *OpenAIGatewayService) ResolveImageRequestGroupID(ctx context.Context, s
 		groupID = settings.GroupID2K
 	case ImageBillingSize4K:
 		groupID = settings.GroupID4K
+	case ImageSizeRoutingUnstable:
+		groupID = settings.GroupIDUnstable
 	default:
 		return 0, fmt.Errorf("unsupported image size tier: %s", sizeTier)
 	}
@@ -5990,7 +5993,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	imageMultiplier := resolveImageRateMultiplier(apiKey, multiplier)
 	imageBillingGroup := (*Group)(nil)
 	if result.ImageCount > 0 {
-		imageBillingGroup = s.resolveImageBillingGroup(ctx, result.ImageSize)
+		billingRoutingTier := result.ImageSize
+		if strings.TrimSpace(result.ImageRoutingTier) != "" {
+			billingRoutingTier = result.ImageRoutingTier
+		}
+		imageBillingGroup = s.resolveImageBillingGroup(ctx, billingRoutingTier)
 		if imageBillingGroup != nil {
 			multiplier = s.resolveGroupRateMultiplier(ctx, user, imageBillingGroup, multiplier)
 			imageMultiplier = resolveImageRateMultiplierForGroup(imageBillingGroup, multiplier)

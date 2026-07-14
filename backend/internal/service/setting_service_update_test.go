@@ -226,17 +226,18 @@ func TestSettingService_UpdateSettings_ImageSizeRouting_ValidGroups(t *testing.T
 			101: {ID: 101, Status: StatusActive},
 			102: {ID: 102, Status: StatusActive},
 			103: {ID: 103, Status: StatusActive},
+			104: {ID: 104, Status: StatusActive},
 		},
 	}
 	svc := NewSettingService(repo, &config.Config{})
 	svc.SetDefaultSubscriptionGroupReader(groupReader)
 
-	raw := `{"group_id_1k":101,"group_id_2k":102,"group_id_4k":103}`
+	raw := `{"group_id_1k":101,"group_id_2k":102,"group_id_4k":103,"group_id_unstable":104}`
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
 		ImageSizeRouting: raw,
 	})
 	require.NoError(t, err)
-	require.Equal(t, []int64{101, 102, 103}, groupReader.calls)
+	require.Equal(t, []int64{101, 102, 103, 104}, groupReader.calls)
 	require.JSONEq(t, raw, repo.updates[SettingKeyImageSizeRouting])
 }
 

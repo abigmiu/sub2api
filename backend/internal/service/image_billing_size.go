@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	ImageBillingSize1K = "1K"
-	ImageBillingSize2K = "2K"
-	ImageBillingSize4K = "4K"
+	ImageBillingSize1K       = "1K"
+	ImageBillingSize2K       = "2K"
+	ImageBillingSize4K       = "4K"
+	ImageSizeRoutingUnstable = "UNSTABLE"
 
 	ImageSizeSourceOutput  = "output"
 	ImageSizeSourceInput   = "input"
