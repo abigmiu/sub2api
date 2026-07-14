@@ -94,6 +94,21 @@ func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 	}
 }
 
+func TestOpenAIHandleStreamingAwareError_MarksUpstreamStreamFailure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	service.SetOpsUpstreamError(c, http.StatusBadGateway, "upstream failed", "")
+
+	h := &OpenAIGatewayHandler{}
+	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "upstream failed", true)
+
+	status, marked := service.GetOpsClientStreamErrorStatus(c)
+	require.True(t, marked)
+	require.Equal(t, http.StatusBadGateway, status)
+}
+
 func TestResolveOpenAIMessagesMetadataSession_DoesNotDerivePromptCacheKey(t *testing.T) {
 	body := []byte(`{"model":"claude-sonnet-4-5","metadata":{"user_id":"claude-code-session"},"messages":[{"role":"user","content":"hello"}]}`)
 

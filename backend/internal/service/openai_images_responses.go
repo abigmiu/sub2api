@@ -1063,6 +1063,17 @@ func (s *OpenAIGatewayService) tryWriteOpenAIImagesStreamEvent(
 	if lastWriteAt != nil {
 		*lastWriteAt = time.Now()
 	}
+	if eventName == "error" {
+		statusCode := http.StatusBadGateway
+		if upstreamStatus, ok := c.Get(OpsUpstreamStatusCodeKey); ok {
+			if status, valid := upstreamStatus.(int); valid && status >= http.StatusBadRequest {
+				statusCode = status
+			}
+		} else {
+			setOpsUpstreamError(c, statusCode, "Image generation stream failed", "")
+		}
+		MarkOpsClientStreamError(c, statusCode)
+	}
 	return true
 }
 
@@ -1281,13 +1292,13 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 			imageCount = len(emitted)
 			imageOutputSizes = openAIResponsesImageResultSizes(finalResults)
 			processDataDone = true
-		case "error", "response.failed":
+		case "error", "response.failed", "response.incomplete":
 			if upstreamErr := openAIImagesUpstreamErrorFromSSEPayload(dataBytes); upstreamErr != nil {
 				retryable := IsOpenAIImagesRetryableUpstreamError(upstreamErr)
+				setOpsUpstreamError(c, upstreamErr.clientStatusCode(), upstreamErr.clientMessage(), "")
 				if !clientDisconnected && (!retryable || c.Writer.Size() != writerSizeBeforeResponse) {
 					s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, "error", buildOpenAIImagesStreamErrorBodyFromUpstream(upstreamErr))
 				}
-				setOpsUpstreamError(c, upstreamErr.clientStatusCode(), upstreamErr.clientMessage(), "")
 				processDataErr = upstreamErr
 				processDataDone = true
 				return

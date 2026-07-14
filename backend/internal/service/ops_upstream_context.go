@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"net/http"
 	"strings"
 	"time"
 
@@ -11,10 +12,11 @@ import (
 // Gin context keys used by Ops error logger for capturing upstream error details.
 // These keys are set by gateway services and consumed by handler/ops_error_logger.go.
 const (
-	OpsUpstreamStatusCodeKey   = "ops_upstream_status_code"
-	OpsUpstreamErrorMessageKey = "ops_upstream_error_message"
-	OpsUpstreamErrorDetailKey  = "ops_upstream_error_detail"
-	OpsUpstreamErrorsKey       = "ops_upstream_errors"
+	OpsUpstreamStatusCodeKey      = "ops_upstream_status_code"
+	OpsUpstreamErrorMessageKey    = "ops_upstream_error_message"
+	OpsUpstreamErrorDetailKey     = "ops_upstream_error_detail"
+	OpsUpstreamErrorsKey          = "ops_upstream_errors"
+	OpsClientStreamErrorStatusKey = "ops_client_stream_error_status"
 
 	// Optional stage latencies (milliseconds) for troubleshooting and alerting.
 	OpsAuthLatencyMsKey      = "ops_auth_latency_ms"
@@ -107,6 +109,27 @@ func setOpsUpstreamError(c *gin.Context, upstreamStatusCode int, upstreamMessage
 	if detail := strings.TrimSpace(upstreamDetail); detail != "" {
 		c.Set(OpsUpstreamErrorDetailKey, detail)
 	}
+}
+
+// MarkOpsClientStreamError records a terminal error delivered inside an already-open stream.
+func MarkOpsClientStreamError(c *gin.Context, statusCode int) {
+	if c == nil || statusCode < http.StatusBadRequest {
+		return
+	}
+	c.Set(OpsClientStreamErrorStatusKey, statusCode)
+}
+
+// GetOpsClientStreamErrorStatus returns the effective status of a terminal stream error.
+func GetOpsClientStreamErrorStatus(c *gin.Context) (int, bool) {
+	if c == nil {
+		return 0, false
+	}
+	statusCode, ok := c.Get(OpsClientStreamErrorStatusKey)
+	if !ok {
+		return 0, false
+	}
+	status, ok := statusCode.(int)
+	return status, ok && status >= http.StatusBadRequest
 }
 
 // OpsUpstreamErrorEvent describes one upstream error attempt during a single gateway request.

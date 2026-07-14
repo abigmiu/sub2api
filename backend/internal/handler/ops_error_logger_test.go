@@ -1,16 +1,28 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type streamFailureOpsRepo struct {
+	service.OpsRepository
+	inserted chan *service.OpsInsertErrorLogInput
+}
+
+func (r *streamFailureOpsRepo) InsertErrorLog(_ context.Context, input *service.OpsInsertErrorLogInput) (int64, error) {
+	r.inserted <- input
+	return 1, nil
+}
 
 func resetOpsErrorLoggerStateForTest(t *testing.T) {
 	t.Helper()
@@ -137,6 +149,32 @@ func TestOpsErrorLoggerMiddleware_DoesNotBreakOuterMiddlewares(t *testing.T) {
 		r.ServeHTTP(rec, req)
 	})
 	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestOpsErrorLoggerMiddleware_StoresClientStreamFailureStatus(t *testing.T) {
+	resetOpsErrorLoggerStateForTest(t)
+	t.Cleanup(func() { resetOpsErrorLoggerStateForTest(t) })
+
+	repo := &streamFailureOpsRepo{inserted: make(chan *service.OpsInsertErrorLogInput, 1)}
+	ops := service.NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := gin.New()
+	r.Use(OpsErrorLoggerMiddleware(ops))
+	r.GET("/v1/images/generations", func(c *gin.Context) {
+		service.SetOpsUpstreamError(c, http.StatusBadGateway, "image generation failed", "")
+		service.MarkOpsClientStreamError(c, http.StatusBadGateway)
+		c.Status(http.StatusOK)
+	})
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/images/generations", nil))
+
+	select {
+	case entry := <-repo.inserted:
+		require.Equal(t, http.StatusBadGateway, entry.StatusCode)
+		require.Equal(t, "Streaming response failed 502: image generation failed", entry.ErrorMessage)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for ops error log")
+	}
 }
 
 func TestIsKnownOpsErrorType(t *testing.T) {

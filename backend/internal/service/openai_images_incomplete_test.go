@@ -7,8 +7,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
 )
 
 // response.incomplete（生成超时/截断）应被识别为可重试的 502 上游错误，触发 failover。
@@ -46,6 +48,30 @@ func TestExtractImagesUpstreamError_IncompleteContentFilterNotRetryable(t *testi
 	if IsOpenAIImagesRetryableUpstreamError(got) {
 		t.Fatal("content_filter must NOT be retryable")
 	}
+}
+
+func TestImagesOAuthStreaming_IncompleteMarksClientFailure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(
+			"data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\"}}\n\n" +
+				"data: {\"type\":\"response.incomplete\",\"response\":{\"id\":\"resp_1\",\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"content_filter\"}}}\n\n",
+		)),
+	}
+
+	svc := &OpenAIGatewayService{}
+	_, _, _, _, err := svc.handleOpenAIImagesOAuthStreamingResponse(resp, c, time.Now(), "b64_json", "image_generation", "gpt-image-2")
+
+	require.Error(t, err)
+	require.Contains(t, rec.Body.String(), "event: error")
+	status, marked := GetOpsClientStreamErrorStatus(c)
+	require.True(t, marked)
+	require.Equal(t, http.StatusBadRequest, status)
 }
 
 // 旧行为不变：error / response.failed 仍按原逻辑识别。

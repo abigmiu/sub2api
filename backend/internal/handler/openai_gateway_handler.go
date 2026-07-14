@@ -1858,6 +1858,9 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status 
 		// "stream closed before response.completed"。
 		if inboundIsResponses(c) {
 			if writeResponsesFailedSSE(c, errType, message) {
+				if hasOpsUpstreamErrorContext(c) {
+					service.MarkOpsClientStreamError(c, status)
+				}
 				return
 			}
 		}
@@ -1868,6 +1871,8 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status 
 			errorEvent := "event: error\ndata: " + `{"error":{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message) + `}}` + "\n\n"
 			if _, err := fmt.Fprint(c.Writer, errorEvent); err != nil {
 				_ = c.Error(err)
+			} else if hasOpsUpstreamErrorContext(c) {
+				service.MarkOpsClientStreamError(c, status)
 			}
 			flusher.Flush()
 		}

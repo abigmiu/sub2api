@@ -555,6 +555,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		status := c.Writer.Status()
 		if status < 400 {
+			clientStreamErrorStatus, clientStreamFailed := service.GetOpsClientStreamErrorStatus(c)
 			// Even when the client request succeeds, we still want to persist upstream error attempts
 			// (retries/failover) so ops can observe upstream instability that gets "covered" by retries.
 			var events []*service.OpsUpstreamErrorEvent
@@ -564,7 +565,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				}
 			}
 			// Also accept single upstream fields set by gateway services (rare for successful requests).
-			hasUpstreamContext := len(events) > 0
+			hasUpstreamContext := len(events) > 0 || clientStreamFailed
 			if !hasUpstreamContext {
 				if v, ok := c.Get(service.OpsUpstreamStatusCodeKey); ok {
 					switch t := v.(type) {
@@ -696,6 +697,9 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			}
 
 			recoveredMsg := "Recovered upstream error"
+			if clientStreamFailed {
+				recoveredMsg = "Streaming response failed"
+			}
 			if effectiveUpstreamStatus > 0 {
 				recoveredMsg += " " + strconvItoa(effectiveUpstreamStatus)
 			}
@@ -703,6 +707,11 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				recoveredMsg += ": " + strings.TrimSpace(*upstreamErrorMessage)
 			}
 			recoveredMsg = truncateString(recoveredMsg, 2048)
+
+			storedStatus := status
+			if clientStreamFailed {
+				storedStatus = clientStreamErrorStatus
+			}
 
 			entry := &service.OpsInsertErrorLogInput{
 				RequestID:       requestID,
@@ -747,7 +756,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				ErrorType:  "upstream_error",
 				// Severity should reflect the upstream failure, not the final client status (200).
 				Severity:          classifyOpsSeverity("upstream_error", effectiveUpstreamStatus),
-				StatusCode:        status,
+				StatusCode:        storedStatus,
 				IsBusinessLimited: false,
 				IsCountTokens:     isCountTokensRequest(c),
 
