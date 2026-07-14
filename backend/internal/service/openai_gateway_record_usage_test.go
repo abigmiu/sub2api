@@ -1519,8 +1519,9 @@ func TestOpenAIGatewayServiceRecordUsage_OutputImageSizeWinsBeforeBillingAndPers
 	require.InDelta(t, 0.44, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_UnstableRoutingUsesActualOutputTierPrice(t *testing.T) {
-	imagePrice1K := 0.17
+func TestOpenAIGatewayServiceRecordUsage_UnstableRoutingUsesFixedPrice(t *testing.T) {
+	imagePrice1K := 0.11
+	imagePrice2K := 0.17
 	unstableGroupID := int64(1203)
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
@@ -1535,6 +1536,7 @@ func TestOpenAIGatewayServiceRecordUsage_UnstableRoutingUsesActualOutputTierPric
 			Status:         StatusActive,
 			RateMultiplier: 1.0,
 			ImagePrice1K:   &imagePrice1K,
+			ImagePrice2K:   &imagePrice2K,
 		},
 	})
 	svc.settingService = settingService
@@ -1565,7 +1567,7 @@ func TestOpenAIGatewayServiceRecordUsage_UnstableRoutingUsesActualOutputTierPric
 	require.NotNil(t, usageRepo.lastLog)
 	require.NotNil(t, usageRepo.lastLog.ImageSize)
 	require.Equal(t, ImageBillingSize1K, *usageRepo.lastLog.ImageSize)
-	require.InDelta(t, imagePrice1K, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, imagePrice2K, usageRepo.lastLog.TotalCost, 1e-12)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_ImageUsesPerImageBillingEvenWithUsageTokens(t *testing.T) {

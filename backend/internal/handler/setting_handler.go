@@ -16,8 +16,6 @@ type playgroundPricingItem struct {
 	GroupID   *int64   `json:"group_id,omitempty"`
 	GroupName string   `json:"group_name,omitempty"`
 	Price     *float64 `json:"price,omitempty"`
-	Price1K   *float64 `json:"price_1k,omitempty"`
-	Price2K   *float64 `json:"price_2k,omitempty"`
 }
 
 // SettingHandler 公开设置处理器（无需认证）
@@ -130,8 +128,7 @@ func (h *SettingHandler) GetPlaygroundPricing(c *gin.Context) {
 		groupID := unstableGroup.ID
 		unstableItem.GroupID = &groupID
 		unstableItem.GroupName = strings.TrimSpace(unstableGroup.Name)
-		unstableItem.Price1K = unstableGroup.GetImagePrice(service.ImageBillingSize1K)
-		unstableItem.Price2K = unstableGroup.GetImagePrice(service.ImageBillingSize2K)
+		unstableItem.Price = unstableGroup.GetImagePrice(service.ImageSizeRoutingUnstable)
 	}
 	items[service.ImageSizeRoutingUnstable] = unstableItem
 	response.Success(c, items)

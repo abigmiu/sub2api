@@ -6269,6 +6269,9 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	multiplier float64,
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
+	if strings.EqualFold(strings.TrimSpace(result.ImageRoutingTier), ImageSizeRoutingUnstable) {
+		sizeTier = ImageBillingSize2K
+	}
 	if billingGroup == nil && apiKey != nil {
 		billingGroup = apiKey.Group
 	}
