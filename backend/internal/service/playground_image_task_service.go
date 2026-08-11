@@ -6,7 +6,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"time"
@@ -15,11 +18,14 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+const playgroundImageMaxDownloadBytes int64 = 32 << 20
+
 type PlaygroundImageTaskService struct {
-	repo         PlaygroundImageTaskRepository
-	settingRepo  SettingRepository
-	storeFactory PlaygroundImageObjectStoreFactory
-	signerFactory PlaygroundUploadSignerFactory
+	repo           PlaygroundImageTaskRepository
+	settingRepo    SettingRepository
+	storeFactory   PlaygroundImageObjectStoreFactory
+	signerFactory  PlaygroundUploadSignerFactory
+	downloadClient *http.Client
 }
 
 func NewPlaygroundImageTaskService(
@@ -29,10 +35,11 @@ func NewPlaygroundImageTaskService(
 	signerFactory PlaygroundUploadSignerFactory,
 ) *PlaygroundImageTaskService {
 	return &PlaygroundImageTaskService{
-		repo:         repo,
-		settingRepo:  settingRepo,
-		storeFactory: storeFactory,
-		signerFactory: signerFactory,
+		repo:           repo,
+		settingRepo:    settingRepo,
+		storeFactory:   storeFactory,
+		signerFactory:  signerFactory,
+		downloadClient: newPlaygroundImageDownloadClient(),
 	}
 }
 
@@ -108,6 +115,7 @@ func (s *PlaygroundImageTaskService) persistTaskResult(ctx context.Context, task
 
 	type rawItem struct {
 		B64JSON       string `json:"b64_json"`
+		URL           string `json:"url"`
 		RevisedPrompt string `json:"revised_prompt"`
 	}
 	var response struct {
@@ -124,10 +132,15 @@ func (s *PlaygroundImageTaskService) persistTaskResult(ctx context.Context, task
 		Data: make([]ImageResponseItem, 0, len(response.Data)),
 	}
 	for index, item := range response.Data {
-		if strings.TrimSpace(item.B64JSON) == "" {
-			return nil, fmt.Errorf("image response returned empty b64_json")
+		var reader *bytes.Reader
+		var contentType string
+		if strings.TrimSpace(item.B64JSON) != "" {
+			reader, contentType, err = decodeImageData(item.B64JSON)
+		} else if strings.TrimSpace(item.URL) != "" {
+			reader, contentType, err = s.downloadImage(ctx, item.URL)
+		} else {
+			return nil, fmt.Errorf("image response item has neither b64_json nor url")
 		}
-		reader, contentType, err := decodeImageData(item.B64JSON)
 		if err != nil {
 			return nil, err
 		}
@@ -143,6 +156,105 @@ func (s *PlaygroundImageTaskService) persistTaskResult(ctx context.Context, task
 		})
 	}
 	return json.Marshal(result)
+}
+
+func (s *PlaygroundImageTaskService) downloadImage(ctx context.Context, rawURL string) (*bytes.Reader, string, error) {
+	normalizedURL, err := validatePlaygroundImageURL(rawURL)
+	if err != nil {
+		return nil, "", fmt.Errorf("invalid image url: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, normalizedURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("build image download request: %w", err)
+	}
+	resp, err := s.downloadClient.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("download image: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, "", fmt.Errorf("download image: unexpected status %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, playgroundImageMaxDownloadBytes+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("read image response: %w", err)
+	}
+	if int64(len(data)) > playgroundImageMaxDownloadBytes {
+		return nil, "", fmt.Errorf("downloaded image exceeds %d bytes", playgroundImageMaxDownloadBytes)
+	}
+	contentType := strings.TrimSpace(strings.Split(http.DetectContentType(data), ";")[0])
+	if !strings.HasPrefix(contentType, "image/") {
+		return nil, "", fmt.Errorf("downloaded content is not an image")
+	}
+	return bytes.NewReader(data), contentType, nil
+}
+
+func newPlaygroundImageDownloadClient() *http.Client {
+	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, err
+		}
+		addresses, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		for _, address := range addresses {
+			if isBlockedPlaygroundImageIP(address.IP) {
+				return nil, fmt.Errorf("image host resolves to a blocked address")
+			}
+		}
+		if len(addresses) == 0 {
+			return nil, fmt.Errorf("image host resolved to no addresses")
+		}
+		var dialErr error
+		for _, address := range addresses {
+			conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(address.IP.String(), port))
+			if err == nil {
+				return conn, nil
+			}
+			dialErr = err
+		}
+		return nil, fmt.Errorf("dial image host: %w", dialErr)
+	}
+	return &http.Client{
+		Transport: transport,
+		Timeout:   60 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return fmt.Errorf("too many image download redirects")
+			}
+			_, err := validatePlaygroundImageURL(req.URL.String())
+			return err
+		},
+	}
+}
+
+func validatePlaygroundImageURL(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("invalid url")
+	}
+	if !strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https") {
+		return "", fmt.Errorf("invalid url scheme: %s", parsed.Scheme)
+	}
+	host := strings.TrimSpace(parsed.Hostname())
+	if host == "" || strings.EqualFold(host, "localhost") || strings.HasSuffix(strings.ToLower(host), ".localhost") {
+		return "", fmt.Errorf("image host is not allowed")
+	}
+	if ip := net.ParseIP(host); ip != nil && isBlockedPlaygroundImageIP(ip) {
+		return "", fmt.Errorf("image host is not allowed")
+	}
+	return trimmed, nil
+}
+
+func isBlockedPlaygroundImageIP(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsUnspecified()
 }
 
 func (s *PlaygroundImageTaskService) loadStorageConfig(ctx context.Context) (*PlaygroundImageStorageConfig, error) {
