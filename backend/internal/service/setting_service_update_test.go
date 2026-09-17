@@ -245,7 +245,7 @@ func TestSettingService_UpdateSettings_ImageSizeRouting_RejectsInactiveGroup(t *
 	repo := &settingUpdateRepoStub{}
 	groupReader := &defaultSubGroupReaderStub{
 		byID: map[int64]*Group{
-			101: {ID: 101, Status: StatusInactive},
+			101: {ID: 101, Status: StatusDisabled},
 		},
 	}
 	svc := NewSettingService(repo, &config.Config{})
