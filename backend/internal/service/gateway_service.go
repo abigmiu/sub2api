@@ -1897,15 +1897,15 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 										stickyCacheMissReason = "session_limit"
 										// 会话限制已满，继续到负载感知选择
 									} else {
-										return &AccountSelectionResult{
-											Account: stickyAccount,
-											WaitPlan: &AccountWaitPlan{
-												AccountID:      stickyAccountID,
-												MaxConcurrency: stickyAccount.Concurrency,
-												Timeout:        cfg.StickySessionWaitTimeout,
-												MaxWaiting:     cfg.StickySessionMaxWaiting,
-											},
-										}, nil
+										// 必须走 newSelectionResult 以 hydrate 账号凭证：
+										// 调度快照中的账号是精简版（OAuth token 等被剥离），
+										// 直接返回会导致后续转发缺少凭证而鉴权失败。
+										return s.newSelectionResult(ctx, stickyAccount, false, nil, &AccountWaitPlan{
+											AccountID:      stickyAccountID,
+											MaxConcurrency: stickyAccount.Concurrency,
+											Timeout:        cfg.StickySessionWaitTimeout,
+											MaxWaiting:     cfg.StickySessionMaxWaiting,
+										})
 									}
 								} else {
 									stickyCacheMissReason = "wait_queue_full"
@@ -4867,7 +4867,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// 最低缓存门槛，导致系统级缓存失效）。
 	//
 	// 对于非 Claude Code 的第三方客户端（opencode 等），仍然走完整 mimicry。
-	isClaudeCode := IsClaudeCodeClient(ctx) || isClaudeCodeClient(c.GetHeader("User-Agent"), parsed.MetadataUserID)
+	var clientUserAgent string
+	if c != nil {
+		clientUserAgent = c.GetHeader("User-Agent")
+	}
+	isClaudeCode := IsClaudeCodeClient(ctx) || isClaudeCodeClient(clientUserAgent, parsed.MetadataUserID)
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
 
 	if shouldMimicClaudeCode {
@@ -4892,7 +4896,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		// 未重写时（haiku / 注入开关关闭）剥离客户端 cache_control，与原有行为一致。
 		// 两种情况下 enforceCacheControlLimit 都会兜底处理上限。
 		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: !systemRewritten}
-		if s.identityService != nil {
+		if s.identityService != nil && c != nil {
 			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
 			if err == nil && fp != nil {
 				// metadata 透传开启时跳过 metadata 注入
@@ -4922,7 +4926,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			if err := replaceBody(applyToolNameRewriteToBody(body, rw)); err != nil {
 				return nil, err
 			}
-			c.Set(toolNameRewriteKey, rw)
+			if c != nil {
+				c.Set(toolNameRewriteKey, rw)
+			}
 		} else {
 			if err := replaceBody(applyToolsLastCacheBreakpoint(body)); err != nil {
 				return nil, err
@@ -8415,10 +8421,13 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 						if _, werr := fmt.Fprint(w, string(restored)); werr != nil {
 							clientDisconnected = true
 							logger.LegacyPrintf("service.gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
-							break
+							// 不 break：客户端断开后仍需继续合并本事件及后续事件的 usage，
+							// 否则会漏计当前事件携带的 usage 导致少计费。后续写入由
+							// clientDisconnected 守卫跳过。
+						} else {
+							flusher.Flush()
+							lastDataAt = time.Now()
 						}
-						flusher.Flush()
-						lastDataAt = time.Now()
 					}
 					if data != "" {
 						if firstTokenMs == nil && data != "[DONE]" {

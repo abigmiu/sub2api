@@ -752,3 +752,72 @@ func TestApiKeyAuthWithSubscriptionGoogle_SubscriptionLimitExceededReturns429(t 
 	require.Equal(t, "RESOURCE_EXHAUSTED", resp.Error.Status)
 	require.Contains(t, resp.Error.Message, "daily usage limit exceeded")
 }
+
+// 回归：Gemini /v1beta 必须与主中间件一样执行 API Key 的 IP ACL，否则可经该端点绕过。
+func TestApiKeyAuthWithSubscriptionGoogle_IPRestrictionEnforced(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	require.NoError(t, r.SetTrustedProxies(nil))
+	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			return &service.APIKey{
+				ID:          1,
+				Key:         key,
+				Status:      service.StatusActive,
+				IPWhitelist: []string{"1.2.3.4"},
+				User: &service.User{
+					ID:     123,
+					Status: service.StatusActive,
+				},
+			}, nil
+		},
+	})
+	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, &config.Config{RunMode: config.RunModeStandard}))
+	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
+
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
+	req.RemoteAddr = "9.9.9.9:12345"
+	req.Header.Set("x-api-key", "restricted")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	var resp googleErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, http.StatusForbidden, resp.Error.Code)
+	require.Contains(t, resp.Error.Message, "9.9.9.9")
+}
+
+// 回归：状态字段滞后的额度耗尽 Key 经 Gemini 端点也应被 429 拦截。
+func TestApiKeyAuthWithSubscriptionGoogle_QuotaExhaustedRejected(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			return &service.APIKey{
+				ID:     1,
+				Key:    key,
+				Status: service.StatusAPIKeyQuotaExhausted,
+				User: &service.User{
+					ID:     123,
+					Status: service.StatusActive,
+				},
+			}, nil
+		},
+	})
+	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, &config.Config{RunMode: config.RunModeStandard}))
+	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
+
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
+	req.Header.Set("x-api-key", "exhausted")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+	var resp googleErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, http.StatusTooManyRequests, resp.Error.Code)
+	require.Equal(t, "RESOURCE_EXHAUSTED", resp.Error.Status)
+}
