@@ -1525,34 +1525,22 @@ func TestOpenAIGatewayServiceRecordUsage_OutputImageSizeWinsBeforeBillingAndPers
 	require.InDelta(t, 0.44, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_UnstableRoutingUsesFixedPrice(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_ImageBillingUsesAPIKeyGroupDirectly(t *testing.T) {
 	imagePrice1K := 0.11
-	imagePrice2K := 0.17
-	unstableGroupID := int64(1203)
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
-	settingService := NewSettingService(&imageSizeRoutingRepoStub{
-		values: map[string]string{
-			SettingKeyImageSizeRouting: `{"group_id_unstable":1203}`,
-		},
-	}, &config.Config{})
-	settingService.SetDefaultSubscriptionGroupReader(&openAIRecordUsageGroupReaderStub{
-		group: &Group{
-			ID:             unstableGroupID,
-			Status:         StatusActive,
-			RateMultiplier: 1.0,
-			ImagePrice1K:   &imagePrice1K,
-			ImagePrice2K:   &imagePrice2K,
-		},
-	})
-	svc.settingService = settingService
+
+	apiKeyGroup := &Group{
+		ID:             1200,
+		RateMultiplier: 1.0,
+		ImagePrice1K:   &imagePrice1K,
+	}
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
-			RequestID:        "resp_image_unstable_size",
+			RequestID:        "resp_image_apikey_group",
 			Model:            "gpt-image-2",
 			ImageCount:       1,
-			ImageRoutingTier: ImageSizeRoutingUnstable,
 			ImageInputSize:   "auto",
 			ImageOutputSizes: []string{"1024x1024"},
 			Duration:         time.Second,
@@ -1560,10 +1548,7 @@ func TestOpenAIGatewayServiceRecordUsage_UnstableRoutingUsesFixedPrice(t *testin
 		APIKey: &APIKey{
 			ID:      11203,
 			GroupID: i64p(1200),
-			Group: &Group{
-				ID:             1200,
-				RateMultiplier: 1.0,
-			},
+			Group:   apiKeyGroup,
 		},
 		User:    &User{ID: 21203},
 		Account: &Account{ID: 31203},
@@ -1573,7 +1558,7 @@ func TestOpenAIGatewayServiceRecordUsage_UnstableRoutingUsesFixedPrice(t *testin
 	require.NotNil(t, usageRepo.lastLog)
 	require.NotNil(t, usageRepo.lastLog.ImageSize)
 	require.Equal(t, ImageBillingSize1K, *usageRepo.lastLog.ImageSize)
-	require.InDelta(t, imagePrice2K, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, imagePrice1K, usageRepo.lastLog.TotalCost, 1e-12)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_ImageUsesPerImageBillingEvenWithUsageTokens(t *testing.T) {

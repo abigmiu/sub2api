@@ -16,13 +16,6 @@ export interface DefaultSubscriptionSetting {
   validity_days: number;
 }
 
-export interface ImageSizeRoutingSettings {
-  group_id_1k?: number;
-  group_id_2k?: number;
-  group_id_4k?: number;
-  group_id_unstable?: number;
-}
-
 // ── 平台限额类型 ──────────────────────────────────────────────────
 export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity"
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
@@ -445,7 +438,6 @@ export interface SystemSettings {
   backend_mode_enabled: boolean;
   custom_menu_items: CustomMenuItem[];
   custom_endpoints: CustomEndpoint[];
-  image_size_routing?: ImageSizeRoutingSettings;
   // SMTP settings
   smtp_host: string;
   smtp_port: number;
@@ -713,7 +705,6 @@ export interface UpdateSettingsRequest {
   backend_mode_enabled?: boolean;
   custom_menu_items?: CustomMenuItem[];
   custom_endpoints?: CustomEndpoint[];
-  image_size_routing?: ImageSizeRoutingSettings;
   smtp_host?: string;
   smtp_port?: number;
   smtp_username?: string;

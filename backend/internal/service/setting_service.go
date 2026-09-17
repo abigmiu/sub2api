@@ -1688,14 +1688,6 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return nil, err
 	}
-	imageSizeRoutingJSON, err := normalizeImageSizeRoutingSettingsJSON(settings.ImageSizeRouting)
-	if err != nil {
-		return nil, err
-	}
-	settings.ImageSizeRouting = imageSizeRoutingJSON
-	if err := s.validateImageSizeRoutingGroups(ctx, parseImageSizeRoutingSettings(settings.ImageSizeRouting)); err != nil {
-		return nil, err
-	}
 	normalizedWhitelist, err := NormalizeRegistrationEmailSuffixWhitelist(settings.RegistrationEmailSuffixWhitelist)
 	if err != nil {
 		return nil, infraerrors.BadRequest("INVALID_REGISTRATION_EMAIL_SUFFIX_WHITELIST", err.Error())
@@ -1912,7 +1904,6 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyTablePageSizeOptions] = string(tablePageSizeOptionsJSON)
 	updates[SettingKeyCustomMenuItems] = settings.CustomMenuItems
 	updates[SettingKeyCustomEndpoints] = settings.CustomEndpoints
-	updates[SettingKeyImageSizeRouting] = settings.ImageSizeRouting
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -2825,7 +2816,6 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyTablePageSizeOptions:                      "[10,20,50,100]",
 		SettingKeyCustomMenuItems:                           "[]",
 		SettingKeyCustomEndpoints:                           "[]",
-		SettingKeyImageSizeRouting:                          "{}",
 		SettingKeyWeChatConnectEnabled:                      "false",
 		SettingKeyWeChatConnectAppID:                        "",
 		SettingKeyWeChatConnectAppSecret:                    "",
@@ -3024,7 +3014,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
 		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
-		ImageSizeRouting:                 settings[SettingKeyImageSizeRouting],
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 	}
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(
@@ -3547,113 +3536,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
 
 	return result
-}
-
-func normalizeImageSizeRoutingSettingsJSON(raw string) (string, error) {
-	settings := parseImageSizeRoutingSettings(raw)
-	normalized, err := json.Marshal(settings)
-	if err != nil {
-		return "", fmt.Errorf("marshal image size routing settings: %w", err)
-	}
-	return string(normalized), nil
-}
-
-func parseImageSizeRoutingSettings(raw string) *ImageSizeRoutingSettings {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return &ImageSizeRoutingSettings{}
-	}
-	var payload ImageSizeRoutingSettings
-	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
-		slog.Warn("[Setting] parseImageSizeRoutingSettings: unmarshal failed", "error", err)
-		return &ImageSizeRoutingSettings{}
-	}
-	payload.GroupID1K = normalizeOptionalPositiveInt64(payload.GroupID1K)
-	payload.GroupID2K = normalizeOptionalPositiveInt64(payload.GroupID2K)
-	payload.GroupID4K = normalizeOptionalPositiveInt64(payload.GroupID4K)
-	payload.GroupIDUnstable = normalizeOptionalPositiveInt64(payload.GroupIDUnstable)
-	return &payload
-}
-
-func (s *SettingService) GetImageSizeRoutingSettings(ctx context.Context) (*ImageSizeRoutingSettings, error) {
-	settings, err := s.GetAllSettings(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return parseImageSizeRoutingSettings(settings.ImageSizeRouting), nil
-}
-
-func (s *SettingService) GetImageSizeRoutingGroup(ctx context.Context, sizeTier string) (*Group, error) {
-	if s == nil || s.defaultSubGroupReader == nil {
-		return nil, fmt.Errorf("image size routing group reader unavailable")
-	}
-	settings, err := s.GetImageSizeRoutingSettings(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var groupID *int64
-	normalizedTier := strings.ToUpper(strings.TrimSpace(sizeTier))
-	switch normalizedTier {
-	case ImageBillingSize1K:
-		groupID = settings.GroupID1K
-	case ImageBillingSize2K:
-		groupID = settings.GroupID2K
-	case ImageBillingSize4K:
-		groupID = settings.GroupID4K
-	case ImageSizeRoutingUnstable:
-		groupID = settings.GroupIDUnstable
-	default:
-		return nil, fmt.Errorf("unsupported image size tier: %s", sizeTier)
-	}
-	if groupID == nil || *groupID <= 0 {
-		return nil, fmt.Errorf("image size routing group not configured for %s", normalizedTier)
-	}
-	group, err := s.defaultSubGroupReader.GetByID(ctx, *groupID)
-	if err != nil {
-		return nil, err
-	}
-	if group == nil || !group.IsActive() {
-		return nil, fmt.Errorf("image size routing group not configured for %s", normalizedTier)
-	}
-	return group, nil
-}
-
-func normalizeOptionalPositiveInt64(value *int64) *int64 {
-	if value == nil || *value <= 0 {
-		return nil
-	}
-	v := *value
-	return &v
-}
-
-func (s *SettingService) validateImageSizeRoutingGroups(ctx context.Context, settings *ImageSizeRoutingSettings) error {
-	if settings == nil || s.defaultSubGroupReader == nil {
-		return nil
-	}
-	for _, item := range []struct {
-		size    string
-		groupID *int64
-	}{
-		{size: ImageBillingSize1K, groupID: settings.GroupID1K},
-		{size: ImageBillingSize2K, groupID: settings.GroupID2K},
-		{size: ImageBillingSize4K, groupID: settings.GroupID4K},
-		{size: ImageSizeRoutingUnstable, groupID: settings.GroupIDUnstable},
-	} {
-		if item.groupID == nil || *item.groupID <= 0 {
-			continue
-		}
-		group, err := s.defaultSubGroupReader.GetByID(ctx, *item.groupID)
-		if err != nil {
-			if errors.Is(err, ErrGroupNotFound) {
-				return infraerrors.BadRequest("IMAGE_SIZE_ROUTING_GROUP_INVALID", fmt.Sprintf("%s image routing group not found", item.size))
-			}
-			return fmt.Errorf("get image size routing group %d: %w", *item.groupID, err)
-		}
-		if !group.IsActive() {
-			return infraerrors.BadRequest("IMAGE_SIZE_ROUTING_GROUP_INVALID", fmt.Sprintf("%s image routing group is not active", item.size))
-		}
-	}
-	return nil
 }
 
 func clampAffiliateRebateRate(value float64) float64 {

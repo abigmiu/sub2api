@@ -58,7 +58,7 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSON(t *testing.T) {
 	require.False(t, parsed.Multipart)
 }
 
-func TestOpenAIGatewayServiceParseOpenAIImagesRequest_AutoUsesUnstableRouting(t *testing.T) {
+func TestOpenAIGatewayServiceParseOpenAIImagesRequest_AutoDefaultsTo2KSizeTier(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"auto"}`)
 
@@ -72,7 +72,6 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_AutoUsesUnstableRouting(t 
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
 	require.NoError(t, err)
 	require.Equal(t, ImageBillingSize2K, parsed.SizeTier)
-	require.Equal(t, ImageSizeRoutingUnstable, parsed.RoutingTier)
 }
 
 func TestOpenAIGatewayServiceParseOpenAIImagesRequest_MultipartEdit(t *testing.T) {
@@ -104,7 +103,7 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_MultipartEdit(t *testing.T
 	require.Equal(t, "gpt-image-2", parsed.Model)
 	require.Equal(t, "replace background", parsed.Prompt)
 	require.Equal(t, "1536x1024", parsed.Size)
-	require.Equal(t, "2K", parsed.SizeTier)
+	require.Equal(t, "1K", parsed.SizeTier)
 	require.Len(t, parsed.Uploads, 1)
 	require.Equal(t, OpenAIImagesCapabilityNative, parsed.RequiredCapability)
 }
@@ -204,8 +203,8 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_UnknownSizesDoNotBlockPass
 		wantTier string
 	}{
 		{size: "2048x1153", wantTier: "2K"},
-		{size: "4096x1024", wantTier: "4K"},
-		{size: "3840x1024", wantTier: "4K"},
+		{size: "4096x1024", wantTier: "2K"},
+		{size: "3840x1024", wantTier: "2K"},
 		{size: "512x512", wantTier: "1K"},
 		{size: "invalid", wantTier: "2K"},
 		{size: "999999999999999999999999999x2", wantTier: "2K"},

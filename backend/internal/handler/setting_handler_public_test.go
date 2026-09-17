@@ -120,3 +120,82 @@ func TestSettingHandler_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *
 	require.True(t, resp.Data.WeChatOAuthOpenEnabled)
 	require.True(t, resp.Data.WeChatOAuthMPEnabled)
 }
+
+type playgroundGroupListerStub struct {
+	groups []service.Group
+	err    error
+}
+
+func (s *playgroundGroupListerStub) ListActive(ctx context.Context) ([]service.Group, error) {
+	return s.groups, s.err
+}
+
+func TestSettingHandler_GetPlaygroundPricing_ReturnsDefaultOpenAIImageGroupPrices(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	price1K := 0.11
+	price2K := 0.17
+	price4K := 0.34
+	groupID := int64(42)
+
+	h := NewSettingHandler(service.NewSettingService(&settingHandlerPublicRepoStub{}, &config.Config{}), "test-version")
+	h.SetGroupService(&playgroundGroupListerStub{
+		groups: []service.Group{
+			{ID: 1, Name: "antigravity group", Platform: "antigravity", AllowImageGeneration: true, ImagePrice1K: &price1K},
+			{ID: groupID, Name: "OpenAI Group", Platform: service.PlatformOpenAI, AllowImageGeneration: true, ImagePrice1K: &price1K, ImagePrice2K: &price2K, ImagePrice4K: &price4K},
+		},
+	})
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/playground/pricing", nil)
+
+	h.GetPlaygroundPricing(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var resp struct {
+		Code int                           `json:"code"`
+		Data map[string]playgroundPricingItem `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Len(t, resp.Data, 4)
+	for tier, want := range map[string]float64{
+		"1K": price1K,
+		"2K": price2K,
+		"4K": price4K,
+		"UNSTABLE": price2K,
+	} {
+		item, ok := resp.Data[tier]
+		require.True(t, ok, "missing tier %s", tier)
+		require.Equal(t, groupID, *item.GroupID)
+		require.Equal(t, "OpenAI Group", item.GroupName)
+		require.Equal(t, want, *item.Price)
+	}
+}
+
+func TestSettingHandler_GetPlaygroundPricing_NoImageGroupReturnsEmpty(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	h := NewSettingHandler(service.NewSettingService(&settingHandlerPublicRepoStub{}, &config.Config{}), "test-version")
+	h.SetGroupService(&playgroundGroupListerStub{
+		groups: []service.Group{
+			{ID: 1, Name: "no-image group", Platform: service.PlatformOpenAI, AllowImageGeneration: false},
+		},
+	})
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/playground/pricing", nil)
+
+	h.GetPlaygroundPricing(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var resp struct {
+		Code int                           `json:"code"`
+		Data map[string]playgroundPricingItem `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Empty(t, resp.Data)
+}

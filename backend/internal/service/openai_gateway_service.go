@@ -247,7 +247,6 @@ type OpenAIForwardResult struct {
 	ClientDisconnect   bool
 	ImageCount         int
 	ImageSize          string
-	ImageRoutingTier   string
 	ImageInputSize     string
 	ImageOutputSize    string
 	ImageOutputSizes   []string
@@ -445,44 +444,6 @@ func NewOpenAIGatewayService(
 	}
 	svc.logOpenAIWSModeBootstrap()
 	return svc
-}
-
-func (s *OpenAIGatewayService) ResolveImageRequestGroupID(ctx context.Context, sizeTier string) (int64, error) {
-	if s == nil || s.settingService == nil {
-		return 0, fmt.Errorf("image size routing settings service unavailable")
-	}
-	settings, err := s.settingService.GetImageSizeRoutingSettings(ctx)
-	if err != nil {
-		return 0, err
-	}
-	var groupID *int64
-	switch strings.ToUpper(strings.TrimSpace(sizeTier)) {
-	case ImageBillingSize1K:
-		groupID = settings.GroupID1K
-	case ImageBillingSize2K:
-		groupID = settings.GroupID2K
-	case ImageBillingSize4K:
-		groupID = settings.GroupID4K
-	case ImageSizeRoutingUnstable:
-		groupID = settings.GroupIDUnstable
-	default:
-		return 0, fmt.Errorf("unsupported image size tier: %s", sizeTier)
-	}
-	if groupID == nil || *groupID <= 0 {
-		return 0, fmt.Errorf("image size routing group not configured for %s", sizeTier)
-	}
-	return *groupID, nil
-}
-
-func (s *OpenAIGatewayService) resolveImageBillingGroup(ctx context.Context, sizeTier string) *Group {
-	if s == nil || s.settingService == nil {
-		return nil
-	}
-	group, err := s.settingService.GetImageSizeRoutingGroup(ctx, sizeTier)
-	if err != nil {
-		return nil
-	}
-	return group
 }
 
 func (s *OpenAIGatewayService) resolveGroupRateMultiplier(ctx context.Context, user *User, group *Group, fallback float64) float64 {
@@ -5993,11 +5954,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	imageMultiplier := resolveImageRateMultiplier(apiKey, multiplier)
 	imageBillingGroup := (*Group)(nil)
 	if result.ImageCount > 0 {
-		billingRoutingTier := result.ImageSize
-		if strings.TrimSpace(result.ImageRoutingTier) != "" {
-			billingRoutingTier = result.ImageRoutingTier
-		}
-		imageBillingGroup = s.resolveImageBillingGroup(ctx, billingRoutingTier)
+		imageBillingGroup = apiKey.Group
 		if imageBillingGroup != nil {
 			multiplier = s.resolveGroupRateMultiplier(ctx, user, imageBillingGroup, multiplier)
 			imageMultiplier = resolveImageRateMultiplierForGroup(imageBillingGroup, multiplier)
@@ -6271,9 +6228,6 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	multiplier float64,
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
-	if strings.EqualFold(strings.TrimSpace(result.ImageRoutingTier), ImageSizeRoutingUnstable) {
-		sizeTier = ImageBillingSize2K
-	}
 	if billingGroup == nil && apiKey != nil {
 		billingGroup = apiKey.Group
 	}

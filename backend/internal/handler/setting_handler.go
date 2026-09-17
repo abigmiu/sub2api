@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"html"
 	"net/http"
 	"strings"
@@ -12,16 +13,24 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const playgroundUnstablePricingTier = "UNSTABLE"
+
 type playgroundPricingItem struct {
 	GroupID   *int64   `json:"group_id,omitempty"`
 	GroupName string   `json:"group_name,omitempty"`
 	Price     *float64 `json:"price,omitempty"`
 }
 
+// playgroundGroupLister lists active groups for the public playground pricing endpoint.
+type playgroundGroupLister interface {
+	ListActive(ctx context.Context) ([]service.Group, error)
+}
+
 // SettingHandler 公开设置处理器（无需认证）
 type SettingHandler struct {
 	settingService           *service.SettingService
 	notificationEmailService *service.NotificationEmailService
+	groupService             playgroundGroupLister
 	version                  string
 }
 
@@ -37,6 +46,11 @@ func NewSettingHandler(settingService *service.SettingService, version string) *
 // changing the constructor signature used by existing tests.
 func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *service.NotificationEmailService) {
 	h.notificationEmailService = notificationEmailService
+}
+
+// SetGroupService attaches the group service used to resolve default playground image pricing.
+func (h *SettingHandler) SetGroupService(groupService playgroundGroupLister) {
+	h.groupService = groupService
 }
 
 // GetPublicSettings 获取公开设置
@@ -111,26 +125,37 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 func (h *SettingHandler) GetPlaygroundPricing(c *gin.Context) {
 	items := map[string]playgroundPricingItem{}
-	for _, tier := range []string{service.ImageBillingSize1K, service.ImageBillingSize2K, service.ImageBillingSize4K} {
-		item := playgroundPricingItem{}
-		group, err := h.settingService.GetImageSizeRoutingGroup(c.Request.Context(), tier)
-		if err == nil && group != nil {
-			groupID := group.ID
-			item.GroupID = &groupID
-			item.GroupName = strings.TrimSpace(group.Name)
-			item.Price = group.GetImagePrice(tier)
+	if h.groupService == nil {
+		response.Success(c, items)
+		return
+	}
+	groups, err := h.groupService.ListActive(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var group *service.Group
+	for i := range groups {
+		candidate := &groups[i]
+		if !candidate.AllowImageGeneration || candidate.Platform != service.PlatformOpenAI {
+			continue
 		}
-		items[tier] = item
+		group = candidate
+		break
 	}
-	unstableItem := playgroundPricingItem{}
-	unstableGroup, unstableErr := h.settingService.GetImageSizeRoutingGroup(c.Request.Context(), service.ImageSizeRoutingUnstable)
-	if unstableErr == nil && unstableGroup != nil {
-		groupID := unstableGroup.ID
-		unstableItem.GroupID = &groupID
-		unstableItem.GroupName = strings.TrimSpace(unstableGroup.Name)
-		unstableItem.Price = unstableGroup.GetImagePrice(service.ImageSizeRoutingUnstable)
+	if group == nil {
+		response.Success(c, items)
+		return
 	}
-	items[service.ImageSizeRoutingUnstable] = unstableItem
+	groupID := group.ID
+	groupName := strings.TrimSpace(group.Name)
+	for _, tier := range []string{service.ImageBillingSize1K, service.ImageBillingSize2K, service.ImageBillingSize4K, playgroundUnstablePricingTier} {
+		items[tier] = playgroundPricingItem{
+			GroupID:   &groupID,
+			GroupName: groupName,
+			Price:     group.GetImagePrice(tier),
+		}
+	}
 	response.Success(c, items)
 }
 

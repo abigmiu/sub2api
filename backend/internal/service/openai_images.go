@@ -70,7 +70,6 @@ type OpenAIImagesRequest struct {
 	Size               string
 	ExplicitSize       bool
 	SizeTier           string
-	RoutingTier        string
 	ResponseFormat     string
 	Quality            string
 	Background         string
@@ -220,10 +219,6 @@ func (s *OpenAIGatewayService) ParseOpenAIImagesRequest(c *gin.Context, body []b
 		return nil, err
 	}
 	req.SizeTier = normalizeOpenAIImageSizeTier(req.Size)
-	req.RoutingTier = req.SizeTier
-	if req.ExplicitSize && strings.EqualFold(strings.TrimSpace(req.Size), "auto") {
-		req.RoutingTier = ImageSizeRoutingUnstable
-	}
 	req.RequiredCapability = classifyOpenAIImagesCapability(req)
 	return req, nil
 }
